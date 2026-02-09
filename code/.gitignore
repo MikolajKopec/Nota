@@ -17,6 +17,7 @@ dist/
 
 # Claude Code
 .claude/
+!.claude/CLAUDE.md
 
 # MCP config (contains local paths)
 .mcp.json
