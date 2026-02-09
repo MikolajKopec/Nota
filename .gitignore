@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment
+.env
+
+# Logs
+*.log
+
+# Audio files (voice messages)
+*.ogg
+*.wav
+*.mp3
+
+# Claude Code
+.claude/
+
+# MCP config (contains local paths)
+assistant-mcp.json
+
+# Windows artifacts
+nul
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
