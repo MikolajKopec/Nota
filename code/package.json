@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",
-    "build": "tsup src/index.ts --format esm --dts",
+    "build": "tsup src/index.ts src/trigger.ts --format esm --dts",
     "start": "node dist/index.js"
   },
   "dependencies": {

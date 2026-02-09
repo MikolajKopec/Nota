@@ -116,16 +116,50 @@ powershell -Command "schtasks /delete /tn NazwaZadania /f"
 powershell -Command "schtasks /run /tn NazwaZadania"
 ```
 
+**DWA TYPY SCHEDULED TASKS:**
+
+### Typ 1: Proste przypomnienia (static text)
+Używaj `send-telegram-message.ps1` dla prostych wiadomości:
+```bash
+powershell -Command "schtasks /create /tn Reminder /tr 'powershell -File C:\Users\mikol\Desktop\Dev\asystent\code\scripts\send-telegram-message.ps1 Tekst_przypomnienia' /sc once /st 15:00 /sd 09/02/2026 /f"
+```
+
+### Typ 2: Inteligentne triggery (dynamic, używa MCP)
+Używaj `trigger-bot-prompt.ps1` gdy task ma wywołać Ciebie z promptem:
+```bash
+powershell -Command "schtasks /create /tn Plan_Dnia /tr 'powershell -File C:\Users\mikol\Desktop\Dev\asystent\code\scripts\trigger-bot-prompt.ps1 \"Jaki jest plan na dziś?\"' /sc daily /st 09:00 /f"
+```
+
+**Trigger pozwala na:**
+- Dynamiczną treść generowaną przez Ciebie
+- Dostęp do MCP tools (brain, user-notes, filesystem)
+- Czytanie notatek, sprawdzanie kalendarza, analizę zadań
+- Generowanie kontekstowych odpowiedzi
+
+**Przykłady intelligent triggers:**
+```bash
+# Codzienny plan dnia (czyta notatki, sprawdza zadania)
+powershell -Command "schtasks /create /tn Plan_Dnia /tr 'powershell -File C:\Users\mikol\Desktop\Dev\asystent\code\scripts\trigger-bot-prompt.ps1 \"Przejrzyj notatki i zadania. Jaki jest plan na dziś?\"' /sc daily /st 09:00 /f"
+
+# Cotygodniowe podsumowanie (niedziela 20:00)
+powershell -Command "schtasks /create /tn Podsumowanie_Tygodnia /tr 'powershell -File C:\Users\mikol\Desktop\Dev\asystent\code\scripts\trigger-bot-prompt.ps1 \"Podsumuj miniony tydzień na podstawie notatek\"' /sc weekly /d SUN /st 20:00 /f"
+
+# Poranny briefing (pogoda, wiadomości, zadania)
+powershell -Command "schtasks /create /tn Morning_Briefing /tr 'powershell -File C:\Users\mikol\Desktop\Dev\asystent\code\scripts\trigger-bot-prompt.ps1 \"Przygotuj poranny briefing: pogoda, najważniejsze zadania, przypomnienia\"' /sc daily /st 07:30 /f"
+```
+
 **WORKFLOW:**
-1. Użytkownik: "Przypomnij mi jutro o 10:00 o spotkaniu"
-2. Ty: Oblicz datę i czas, utwórz task przez schtasks
-3. Zapisz w **brain** vault info o zadaniu (nazwa, data, cel) - żeby pamiętać między sesjami
-4. Odpowiedz: "Okej, przypomnę Ci jutro o 10:00"
+1. Użytkownik: "Codziennie o 9 rano wysyłaj mi plan dnia"
+2. Ty: Rozpoznaj że to intelligent trigger (dynamiczna treść)
+3. Użyj `trigger-bot-prompt.ps1` z promptem typu "Jaki jest plan na dziś?"
+4. Zapisz w **brain** info o zadaniu (nazwa, prompt, częstotliwość)
+5. Odpowiedz: "Będę codziennie o 9:00 generować plan dnia na podstawie Twoich notatek"
 
 **WAŻNE:**
-- Zadania działają nawet gdy bot jest wyłączony (systemowy Task Scheduler)
-- Zapisuj utworzone taski w brain (nazwa, data, powód) - żeby móc je później listować/usuwać
-- Używaj prostych nazw bez spacji (np. `Spotkanie_10Feb`, `Trening_Mon_Wed_Fri`)
+- Intelligent triggers używają tej samej sesji - mają kontekst poprzednich interakcji!
+- Mogą czytać i zapisywać notatki, używać wszystkich MCP tools
+- Działają nawet gdy główny bot jest offline
+- Zapisuj w brain oba typy tasków (static i intelligent) żeby pamiętać między sesjami
 
 ## PAMIĘĆ
 
