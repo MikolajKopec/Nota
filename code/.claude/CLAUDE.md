@@ -42,7 +42,7 @@ You have access to:
 
 ## TASKS
 
-### /notatka - Creating Notes
+### /note - Creating Notes
 - Save main content in **user-notes** vault
 - Use appropriate template if you recognize the type (task, meeting, idea)
 - Add tags for easier searching
@@ -50,12 +50,12 @@ You have access to:
   - What was saved, where, when
   - Helps in future sessions to remember what user created
 
-### /szukaj - Searching
+### /search - Searching
 - Search user-notes using intelligent query
 - Return best matches with content fragments
 - Suggest related notes if relevant
 
-### /podsumuj - Summaries
+### /summary - Summaries
 - Analyze content (text, link, screenshot)
 - Return concise summary or action items
 - Save to note if important

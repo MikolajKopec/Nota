@@ -15,6 +15,12 @@ import {
   getSessionHistory,
 } from "./claude.js";
 import { logger } from "./logger.js";
+import {
+  getAutostartStatus,
+  enableAutostart,
+  disableAutostart,
+} from "./autostart.js";
+import { checkForUpdates, formatUpdateMessage } from "./updates.js";
 
 type MyContext = FileFlavor<Context>;
 
@@ -194,7 +200,7 @@ async function sendResponseWithImages(ctx: MyContext, text: string): Promise<voi
       unlink(imgPath).catch(() => {});
     } catch (err) {
       logger.error("bot", "Failed to send image", { path: imgPath, error: (err as Error).message });
-      await ctx.reply(`\u26a0\ufe0f Nie uda\u0142o si\u0119 wys\u0142a\u0107 obrazu: ${imgPath}`);
+      await ctx.reply(`\u26a0\ufe0f Failed to send image: ${imgPath}`);
     }
   }
 }
@@ -204,12 +210,12 @@ async function sendResponseWithImages(ctx: MyContext, text: string): Promise<voi
 function timeAgo(ts: number): string {
   const diff = Date.now() - ts;
   const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return "teraz";
-  if (minutes < 60) return `${minutes}min temu`;
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes}min ago`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h temu`;
+  if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
-  return `${days}d temu`;
+  return `${days}d ago`;
 }
 
 async function downloadFile(filePath: string, token: string): Promise<Buffer> {
@@ -241,21 +247,21 @@ export function createBot(): Bot<MyContext> {
   bot.command("start", async (ctx) => {
     logger.info("bot", "Command: /start");
     resetSession();
-    await ctx.reply("Cze\u015b\u0107! Wy\u015blij mi wiadomo\u015b\u0107 tekstow\u0105 lub g\u0142osow\u0105, a zarz\u0105dz\u0119 Twoj\u0105 krypt\u0105 Obsidian.");
+    await ctx.reply("Hello! Send me a text or voice message, and I'll manage your Obsidian vault.");
   });
 
   // /new — reset session
   bot.command("new", async (ctx) => {
     logger.info("bot", "Command: /new");
     resetSession();
-    await ctx.reply("Nowa sesja. Nast\u0119pna wiadomo\u015b\u0107 rozpocznie now\u0105 rozmow\u0119.");
+    await ctx.reply("New session. Next message will start a new conversation.");
   });
 
   // /rewind — show inline keyboard with recent sessions
   bot.command("rewind", async (ctx) => {
     const history = getSessionHistory();
     if (history.length === 0) {
-      await ctx.reply("Brak poprzednich sesji.");
+      await ctx.reply("No previous sessions.");
       return;
     }
 
@@ -265,7 +271,7 @@ export function createBot(): Bot<MyContext> {
       keyboard.text(`${entry.label} (${timeAgo(entry.startedAt)})`, `session:${entry.id}`).row();
     }
 
-    await ctx.reply("Wybierz sesj\u0119 do przywr\u00f3cenia:", { reply_markup: keyboard });
+    await ctx.reply("Select a session to resume:", { reply_markup: keyboard });
   });
 
   // Callback query handler for session selection
@@ -275,13 +281,13 @@ export function createBot(): Bot<MyContext> {
     const entry = history.find((e) => e.id === id);
 
     if (!entry) {
-      await ctx.answerCallbackQuery("Sesja nie znaleziona.");
+      await ctx.answerCallbackQuery("Session not found.");
       return;
     }
 
     switchToSession(id);
-    await ctx.answerCallbackQuery("Przywr\u00f3cono sesj\u0119");
-    await ctx.editMessageText(`Przywr\u00f3cono sesj\u0119: ${entry.label}`);
+    await ctx.answerCallbackQuery("Session resumed");
+    await ctx.editMessageText(`Resumed session: ${entry.label}`);
   });
 
   // /tasks — manage scheduled tasks
@@ -328,10 +334,12 @@ export function createBot(): Bot<MyContext> {
     const helpText = `🤖 Nota - Your intelligent note companion
 
 📝 COMMANDS:
-/notatka <text> - Save a note
-/szukaj <query> - Search notes
-/podsumuj - Summarize recent notes
+/note <text> - Save a note
+/search <query> - Search notes
+/summary - Summarize recent notes
 /tasks - Manage scheduled tasks
+/autostart - Bot autostart settings
+/updates - Check for updates
 /new - New session
 /rewind - Resume previous session
 /help - This message
@@ -375,45 +383,127 @@ Examples:
     await ctx.reply(helpText);
   });
 
+  // /autostart — manage bot autostart on system startup
+  bot.command("autostart", async (ctx) => {
+    logger.info("bot", "Command: /autostart");
+
+    const args = ctx.match?.trim().toLowerCase();
+
+    try {
+      if (!args || args === "status") {
+        // Show status
+        const status = await getAutostartStatus();
+
+        if (status.enabled) {
+          const stateEmoji = status.state === "ready" ? "✅" : status.state === "running" ? "🟢" : "⚠️";
+          await ctx.reply(
+            `${stateEmoji} Autostart: **ENABLED**\n` +
+            `State: ${status.state || "unknown"}\n\n` +
+            `Bot will start automatically when system boots.\n\n` +
+            `Commands:\n` +
+            `/autostart disable - Turn off autostart\n` +
+            `/autostart status - Show this status`,
+            { parse_mode: "Markdown" }
+          );
+        } else {
+          await ctx.reply(
+            `❌ Autostart: **DISABLED**\n\n` +
+            `Bot will NOT start automatically on system boot.\n\n` +
+            `Commands:\n` +
+            `/autostart enable - Turn on autostart\n` +
+            `/autostart status - Show this status`,
+            { parse_mode: "Markdown" }
+          );
+        }
+      } else if (args === "enable") {
+        // Enable autostart
+        await ctx.reply("⏳ Enabling autostart...");
+        await enableAutostart();
+        await ctx.reply("✅ Autostart enabled! Bot will start automatically on system boot.");
+        logger.info("bot", "Autostart enabled via command");
+      } else if (args === "disable") {
+        // Disable autostart
+        await ctx.reply("⏳ Disabling autostart...");
+        await disableAutostart();
+        await ctx.reply("❌ Autostart disabled. Bot will not start automatically.");
+        logger.info("bot", "Autostart disabled via command");
+      } else {
+        await ctx.reply(
+          "Usage:\n" +
+          "/autostart - Show status\n" +
+          "/autostart enable - Enable autostart\n" +
+          "/autostart disable - Disable autostart"
+        );
+      }
+    } catch (err) {
+      logger.error("bot", "Error in /autostart command", { error: (err as Error).message });
+      await ctx.reply(`❌ Error: ${(err as Error).message}`);
+    }
+  });
+
+  // /updates — check for available updates
+  bot.command("updates", async (ctx) => {
+    logger.info("bot", "Command: /updates");
+
+    try {
+      await ctx.reply("🔍 Checking for updates...");
+
+      const info = await checkForUpdates();
+      const message = formatUpdateMessage(info);
+
+      await ctx.reply(message, { parse_mode: "Markdown" });
+
+      if (info.hasGitUpdates || info.hasNpmUpdates) {
+        logger.info("bot", "Updates found", {
+          git: info.hasGitUpdates,
+          npm: info.hasNpmUpdates,
+        });
+      }
+    } catch (err) {
+      logger.error("bot", "Error in /updates command", { error: (err as Error).message });
+      await ctx.reply(`❌ Error checking updates: ${(err as Error).message}`);
+    }
+  });
+
   // --- Faza 5: Telegram commands (BEFORE message:text!) ---
 
-  bot.command("notatka", async (ctx) => {
+  bot.command("note", async (ctx) => {
     const text = ctx.match;
     if (!text) {
-      await ctx.reply("U\u017cycie: /notatka <tekst notatki>");
+      await ctx.reply("Usage: /note <text>");
       return;
     }
     await enqueue(async () => {
       const stopTyping = startTypingLoop(ctx);
       try {
-        await handleResponse(ctx, `Zapisz notatk\u0119 w User Notes vault: ${text}`);
+        await handleResponse(ctx, `Save note in User Notes vault: ${text}`);
       } finally {
         stopTyping();
       }
     });
   });
 
-  bot.command("szukaj", async (ctx) => {
+  bot.command("search", async (ctx) => {
     const query = ctx.match;
     if (!query) {
-      await ctx.reply("U\u017cycie: /szukaj <zapytanie>");
+      await ctx.reply("Usage: /search <query>");
       return;
     }
     await enqueue(async () => {
       const stopTyping = startTypingLoop(ctx);
       try {
-        await handleResponse(ctx, `Search User Notes vault for: ${query}. Poka\u017c found results.`);
+        await handleResponse(ctx, `Search User Notes vault for: ${query}. Show found results.`);
       } finally {
         stopTyping();
       }
     });
   });
 
-  bot.command("podsumuj", async (ctx) => {
+  bot.command("summary", async (ctx) => {
     await enqueue(async () => {
       const stopTyping = startTypingLoop(ctx);
       try {
-        await handleResponse(ctx, "Przeczytaj ostatnie notatki z User Notes i podsumuj co si\u0119 dzia\u0142o.");
+        await handleResponse(ctx, "Read recent notes from User Notes and summarize what happened.");
       } finally {
         stopTyping();
       }
@@ -435,7 +525,7 @@ Examples:
         await handleResponse(ctx, text);
       } catch (err) {
         console.error("Voice handling error:", err);
-        await ctx.reply(`B\u0142\u0105d: ${(err as Error).message}`);
+        await ctx.reply(`Error: ${(err as Error).message}`);
       } finally {
         stopTyping();
       }
@@ -470,7 +560,7 @@ Examples:
         unlink(tmpPath).catch(() => {});
       } catch (err) {
         console.error("Photo handling error:", err);
-        await ctx.reply(`B\u0142\u0105d: ${(err as Error).message}`);
+        await ctx.reply(`Error: ${(err as Error).message}`);
       } finally {
         stopTyping();
       }
@@ -486,7 +576,7 @@ Examples:
         await handleResponse(ctx, ctx.msg.text);
       } catch (err) {
         console.error("Text handling error:", err);
-        await ctx.reply(`B\u0142\u0105d: ${(err as Error).message}`);
+        await ctx.reply(`Error: ${(err as Error).message}`);
       } finally {
         stopTyping();
       }
