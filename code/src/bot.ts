@@ -125,7 +125,7 @@ async function handleResponse(ctx: MyContext, userMessage: string): Promise<void
 
   if (result.resumeFailed) {
     logger.warn("bot", "Session resume failed, started new session");
-    await ctx.reply("(Nie udało się wznowić sesji — rozpoczynam nową)");
+    await ctx.reply("(Failed to resume session — starting new one)");
   }
 
   const text = result.text;
@@ -292,7 +292,7 @@ export function createBot(): Bot<MyContext> {
       try {
         const startMs = Date.now();
         const result = await askClaudeStream(
-          "Pokaż wszystkie aktywne scheduled tasks z brain/Asystent/scheduled-tasks.md. Dla każdego taska wyświetl: nazwę, harmonogram, opis, status. Dodaj instrukcję jak użytkownik może nimi zarządzać (disable, enable, delete).",
+          "Show all active scheduled tasks from brain/Asystent/scheduled-tasks.md. For each task display: name, schedule, description, status. Add instructions on how user can manage them (disable, enable, delete).",
           {}
         );
 
@@ -306,7 +306,7 @@ export function createBot(): Bot<MyContext> {
       } catch (err) {
         stopTyping();
         logger.error("bot", "Error in /tasks command", { error: (err as Error).message });
-        await ctx.reply(`❌ Błąd: ${(err as Error).message}`);
+        await ctx.reply(`❌ Error: ${(err as Error).message}`);
       }
     });
   });
@@ -327,50 +327,50 @@ export function createBot(): Bot<MyContext> {
     logger.info("bot", "Command: /help");
     const helpText = `🤖 Nota - Your intelligent note companion
 
-📝 KOMENDY:
-/notatka <tekst> - Zapisz notatkę
-/szukaj <zapytanie> - Przeszukaj notatki
-/podsumuj - Podsumuj ostatnie notatki
-/tasks - Zarządzaj scheduled tasks
-/new - Nowa sesja
-/rewind - Przywróć sesję
-/help - Ta wiadomość
+📝 COMMANDS:
+/notatka <text> - Save a note
+/szukaj <query> - Search notes
+/podsumuj - Summarize recent notes
+/tasks - Manage scheduled tasks
+/new - New session
+/rewind - Resume previous session
+/help - This message
 
-💬 WIADOMOŚCI:
-• Tekst - Rozmowa z asystentem
-• Głos - Transkrypcja Whisper
-• Zdjęcie - Analiza obrazu
+💬 MESSAGES:
+• Text - Chat with assistant
+• Voice - Whisper transcription
+• Photo - Image analysis
 
 🎨 SKILLS (16):
 
-📄 Dokumenty:
-• docx - Dokumenty Word
-• pdf - Przetwarzanie PDF
-• pptx - Prezentacje PowerPoint
-• xlsx - Arkusze Excel
+📄 Documents:
+• docx - Word documents
+• pdf - PDF processing
+• pptx - PowerPoint presentations
+• xlsx - Excel spreadsheets
 
-🎨 Grafika:
-• canvas-design - Postery i grafiki
-• algorithmic-art - Sztuka generatywna
-• slack-gif-creator - Animowane GIFy
-• theme-factory - Motywy HTML
+🎨 Graphics:
+• canvas-design - Posters and graphics
+• algorithmic-art - Generative art
+• slack-gif-creator - Animated GIFs
+• theme-factory - HTML themes
 
 💻 Web & Development:
 • frontend-design - React + Tailwind
 • web-artifacts-builder - HTML dashboards
-• webapp-testing - Testy Playwright
+• webapp-testing - Playwright tests
 
-🔧 Meta & Narzędzia:
-• mcp-builder - Tworzenie MCP servers
-• skill-creator - Tworzenie skills
-• brand-guidelines - Branding Anthropic
-• internal-comms - Komunikacja
-• doc-coauthoring - Współpraca nad docs
+🔧 Meta & Tools:
+• mcp-builder - Create MCP servers
+• skill-creator - Create skills
+• brand-guidelines - Anthropic branding
+• internal-comms - Internal communications
+• doc-coauthoring - Document collaboration
 
-Przykłady:
-"Narysuj poster BELIEVE"
-"Stwórz arkusz budżetu"
-"Pomóż stworzyć skill"`;
+Examples:
+"Draw a BELIEVE poster"
+"Create a budget spreadsheet"
+"Help me create a skill"`;
 
     await ctx.reply(helpText);
   });
@@ -402,7 +402,7 @@ Przykłady:
     await enqueue(async () => {
       const stopTyping = startTypingLoop(ctx);
       try {
-        await handleResponse(ctx, `Przeszukaj vault User Notes za: ${query}. Poka\u017c znalezione wyniki.`);
+        await handleResponse(ctx, `Search User Notes vault for: ${query}. Poka\u017c found results.`);
       } finally {
         stopTyping();
       }

@@ -15,7 +15,7 @@ function loadSystemPrompt(): string {
     return readFileSync(path, "utf-8");
   } catch (err) {
     logger.error("claude", "Failed to load .claude/CLAUDE.md", { error: (err as Error).message });
-    return "Jesteś osobistym asystentem użytkownika. Odpowiadaj po polsku.";
+    return "You are a personal assistant. Respond in user's language.";
   }
 }
 
@@ -146,7 +146,7 @@ function spawnClaude(args: string[], userMessage: string): Promise<string> {
     proc.on("close", (code) => {
       clearTimeout(timer);
       if (code === 0) {
-        resolve(stdout.trim() || "(Claude nie zwrócił odpowiedzi)");
+        resolve(stdout.trim() || "(Claude returned no response)");
       } else {
         reject(new Error(`Claude exited with code ${code}: ${stderr.trim()}`));
       }
@@ -369,7 +369,7 @@ function spawnClaudeStream(args: string[], userMessage: string, callbacks: Strea
 
       if (code === 0) {
         const result: StreamResult = {
-          text: fullText.trim() || "(Claude nie zwrócił odpowiedzi)",
+          text: fullText.trim() || "(Claude returned no response)",
           usage,
         };
         logger.info("claude", "Claude subprocess completed successfully", {
