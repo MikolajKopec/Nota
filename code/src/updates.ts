@@ -1,8 +1,10 @@
 import { exec } from "child_process";
 import { promisify } from "util";
+import { resolve } from "path";
 import { logger } from "./logger.js";
 
 const execAsync = promisify(exec);
+const PROJECT_ROOT = resolve(process.cwd());
 
 export interface UpdateInfo {
   hasUpdates: boolean;
@@ -132,6 +134,46 @@ export async function checkAndNotify(): Promise<{ hasUpdates: boolean; message: 
   const message = formatUpdateMessage(info);
 
   return { hasUpdates: info.hasUpdates, message };
+}
+
+/**
+ * Schedule bot restart after 1 minute using Windows Task Scheduler
+ */
+export async function scheduleRestart(): Promise<void> {
+  try {
+    const taskName = "AsystentBotRestart_OneTime";
+    const codeDir = PROJECT_ROOT;
+    const logFile = resolve(PROJECT_ROOT, "..", "bot.log");
+
+    // Calculate time 1 minute from now
+    const now = new Date();
+    const runTime = new Date(now.getTime() + 60 * 1000); // 1 minute from now
+    const timeStr = runTime.toTimeString().slice(0, 5); // HH:MM format
+
+    // Delete existing restart task if present
+    await execAsync(
+      `powershell -Command "Unregister-ScheduledTask -TaskName '${taskName}' -Confirm:$false -ErrorAction SilentlyContinue"`
+    ).catch(() => {
+      // Ignore errors if task doesn't exist
+    });
+
+    // Create one-time scheduled task
+    const createCmd = `powershell -Command "` +
+      `$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c cd /d \\"${codeDir}\\" && npx tsx src\\\\index.ts >> \\"${logFile}\\" 2>&1' -WorkingDirectory '${codeDir}'; ` +
+      `$trigger = New-ScheduledTaskTrigger -Once -At '${timeStr}'; ` +
+      `$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -DeleteExpiredTaskAfter 00:00:01; ` +
+      `$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive; ` +
+      `Register-ScheduledTask -TaskName '${taskName}' -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description 'One-time bot restart after update' -Force | Out-Null` +
+      `"`;
+
+    await execAsync(createCmd);
+    logger.info("updates", "Scheduled bot restart", { time: runTime.toISOString() });
+  } catch (err) {
+    logger.error("updates", "Failed to schedule restart", {
+      error: (err as Error).message,
+    });
+    throw new Error(`Failed to schedule restart: ${(err as Error).message}`);
+  }
 }
 
 /**

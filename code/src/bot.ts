@@ -20,7 +20,7 @@ import {
   enableAutostart,
   disableAutostart,
 } from "./autostart.js";
-import { checkForUpdates, formatUpdateMessage, applyUpdates } from "./updates.js";
+import { checkForUpdates, formatUpdateMessage, applyUpdates, scheduleRestart } from "./updates.js";
 
 type MyContext = FileFlavor<Context>;
 
@@ -459,25 +459,29 @@ Examples:
       await ctx.reply(result.message, { parse_mode: "Markdown" });
 
       if (result.success && result.message.includes("restart")) {
-        // Check if autostart is enabled before restarting
-        const autostartStatus = await getAutostartStatus();
+        logger.info("bot", "Update successful, scheduling restart");
 
-        if (autostartStatus.enabled) {
-          logger.info("bot", "Update successful, restarting bot in 3 seconds (autostart enabled)");
-          await ctx.reply("♻️ Restarting bot...");
-
-          // Give time for message to be sent
-          setTimeout(() => {
-            logger.info("bot", "Restarting bot after update");
-            process.exit(0); // Exit gracefully - autostart will restart
-          }, 3000);
-        } else {
-          logger.info("bot", "Update successful, but autostart disabled - manual restart required");
+        try {
+          // Schedule bot restart in 1 minute
+          await scheduleRestart();
           await ctx.reply(
-            "⚠️ **Manual restart required**\n\n" +
-            "Autostart is disabled. Please restart the bot manually:\n" +
-            "```\nnpm run dev\n```\n\n" +
-            "Or enable autostart: `/autostart enable`",
+            "⏱️ **Restart scheduled**\n\n" +
+            "Bot will restart automatically in 1 minute.\n" +
+            "Shutting down now...",
+            { parse_mode: "Markdown" }
+          );
+
+          // Give time for message to be sent, then exit
+          setTimeout(() => {
+            logger.info("bot", "Shutting down for update - restart scheduled");
+            process.exit(0);
+          }, 2000);
+        } catch (err) {
+          logger.error("bot", "Failed to schedule restart", { error: (err as Error).message });
+          await ctx.reply(
+            "⚠️ **Failed to schedule restart**\n\n" +
+            "Please restart manually:\n" +
+            "```\nnpm run dev\n```",
             { parse_mode: "Markdown" }
           );
         }
