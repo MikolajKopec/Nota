@@ -157,9 +157,13 @@ export async function scheduleRestart(): Promise<void> {
       // Ignore errors if task doesn't exist
     });
 
+    // Use node.exe with compiled dist/index.js (no need for tsx in PATH)
+    const nodeExe = process.execPath; // Full path to node.exe
+    const distIndex = resolve(codeDir, "dist", "index.js");
+
     // Create one-time scheduled task
     const createCmd = `powershell -Command "` +
-      `$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c cd /d \\"${codeDir}\\" && npx tsx src\\\\index.ts >> \\"${logFile}\\" 2>&1' -WorkingDirectory '${codeDir}'; ` +
+      `$action = New-ScheduledTaskAction -Execute '${nodeExe}' -Argument '\\"${distIndex}\\"' -WorkingDirectory '${codeDir}'; ` +
       `$trigger = New-ScheduledTaskTrigger -Once -At '${timeStr}'; ` +
       `$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -DeleteExpiredTaskAfter 00:00:01; ` +
       `$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive; ` +
