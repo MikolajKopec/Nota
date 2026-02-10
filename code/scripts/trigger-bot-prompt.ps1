@@ -6,28 +6,46 @@ param(
     [string]$Prompt
 )
 
+$timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = Split-Path -Parent $scriptDir
+$logFile = Join-Path (Split-Path -Parent $projectRoot) "bot.log"
 $triggerJs = Join-Path $projectRoot "dist\trigger.js"
 
+function Write-Log {
+    param([string]$Level, [string]$Message)
+    $logLine = "[$timestamp] [$Level] [ps:trigger-prompt] $Message"
+    Write-Host $logLine
+    Add-Content -Path $logFile -Value $logLine -ErrorAction SilentlyContinue
+}
+
+Write-Log "INFO " "Starting trigger-bot-prompt.ps1"
+Write-Log "DEBUG" "Script Dir: $scriptDir"
+Write-Log "DEBUG" "Project Root: $projectRoot"
+Write-Log "DEBUG" "Trigger JS: $triggerJs"
+Write-Log "DEBUG" "Prompt: $($Prompt.Substring(0, [Math]::Min(100, $Prompt.Length)))"
+
 if (-not (Test-Path $triggerJs)) {
-    Write-Error "trigger.js not found at $triggerJs. Did you run 'npm run build'?"
+    Write-Log "ERROR" "trigger.js not found at $triggerJs. Did you run 'npm run build'?"
     exit 1
 }
 
-Write-Host "[trigger-bot-prompt] Invoking bot with prompt: $Prompt"
+Write-Log "INFO " "Invoking node with trigger.js"
 
 try {
+    $startTime = Get-Date
     node $triggerJs $Prompt
     $exitCode = $LASTEXITCODE
+    $duration = (Get-Date) - $startTime
 
     if ($exitCode -eq 0) {
-        Write-Host "[trigger-bot-prompt] Success"
+        Write-Log "INFO " "Success (duration: $($duration.TotalSeconds)s)"
     } else {
-        Write-Error "[trigger-bot-prompt] Bot returned exit code $exitCode"
+        Write-Log "ERROR" "Bot returned exit code $exitCode (duration: $($duration.TotalSeconds)s)"
         exit $exitCode
     }
 } catch {
-    Write-Error "[trigger-bot-prompt] Error: $_"
+    Write-Log "ERROR" "Exception: $_"
+    Write-Log "ERROR" "Exception details: $($_.Exception.Message)"
     exit 1
 }

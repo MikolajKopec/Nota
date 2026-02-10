@@ -58,108 +58,26 @@ node C:\\Users\\mikol\\Desktop\\Dev\\asystent\\code\\scripts\\screenshot.cjs "ht
 Skrypt zapisze plik w `%TEMP%\\asystent-screenshots\\screenshot_TIMESTAMP.png`.
 Użyj znacznika `[IMG:ścieżka]` w odpowiedzi.
 
-## TASK SCHEDULER (Zaplanowane zadania)
+## SCHEDULED TASKS (Zaplanowane zadania)
 
-Możesz tworzyć zaplanowane zadania systemowe przez Windows Task Scheduler używając `schtasks`.
+Gdy user prosi o przypomnienia, scheduled tasks lub planowane wiadomości - **użyj skilla `scheduler`**.
 
-**WAŻNE:** Używaj `powershell -Command "schtasks ..."` (przez Bash MCP) żeby uniknąć problemów z forward slashes.
+Skill automatycznie:
+- Parsuje natural language ("za 2 minuty", "codziennie o 09:00")
+- Tworzy tasks z poprawnym formatem daty DD/MM/YYYY
+- Używa `trigger-bot-prompt.ps1` (intelligent triggers z pełnym MCP access)
+- Zarządza metadata w brain vault
 
-### Tworzenie zadania
-```bash
-powershell -Command "schtasks /create /tn NazwaZadania /tr 'ścieżka' /sc HARMONOGRAM [opcje] /f"
-```
-
-**Harmonogramy:**
-- `/sc once /st HH:MM /sd DD/MM/YYYY` - jednorazowo
-- `/sc daily /st HH:MM` - codziennie
-- `/sc weekly /d MON,WED,FRI /st HH:MM` - wybrane dni tygodnia
-- `/sc monthly /d 1 /st HH:MM` - pierwszy dzień miesiąca
-
-**Przykłady:**
-```bash
-# Przypomnienie przez Telegram (jednorazowe - dziś o 15:30)
-powershell -Command "schtasks /create /tn Przypomnienie_Spotkanie /tr 'powershell -File C:\Users\mikol\Desktop\Dev\asystent\code\scripts\send-telegram-message.ps1 Spotkanie_o_15:30!' /sc once /st 15:30 /sd 09/02/2026 /f"
-
-# Przypomnienie codzienne o 7:00
-powershell -Command "schtasks /create /tn Pobudka /tr 'powershell -File C:\Users\mikol\Desktop\Dev\asystent\code\scripts\send-telegram-message.ps1 Wstawaj!' /sc daily /st 07:00 /f"
-
-# Przypomnienie w wybrane dni (pon, śr, pt) o 18:00
-powershell -Command "schtasks /create /tn Trening /tr 'powershell -File C:\Users\mikol\Desktop\Dev\asystent\code\scripts\send-telegram-message.ps1 Czas_na_trening!' /sc weekly /d MON,WED,FRI /st 18:00 /f"
-
-# Miesięczne przypomnienie (1. dzień miesiąca)
-powershell -Command "schtasks /create /tn Oplaty /tr 'powershell -File C:\Users\mikol\Desktop\Dev\asystent\code\scripts\send-telegram-message.ps1 Rachunki!' /sc monthly /d 1 /st 09:00 /f"
-```
-
-**UWAGI:**
-- Nazwy zadań bez spacji (lub w cudzysłowie z `\`) - łatwiej bez spacji
-- Tekst wiadomości bez spacji (lub użyj underscore `_`) - unikaj problemów z escapingiem
-- Data format: DD/MM/YYYY (np. 09/02/2026)
-- Czas format: HH:MM (24h, np. 15:30)
-- `/f` = force (nadpisz jeśli istnieje)
-
-### Listowanie zadań
-```bash
-# Wszystkie zadania utworzone przez bota (prefix: użytkownik może chcieć własny)
-powershell -Command "schtasks /query /fo LIST | Select-String -Pattern 'TaskName|Next Run Time|Status' -Context 0,2"
-
-# Konkretne zadanie
-powershell -Command "schtasks /query /tn NazwaZadania /fo LIST"
-```
-
-### Usuwanie zadania
-```bash
-powershell -Command "schtasks /delete /tn NazwaZadania /f"
-```
-
-### Uruchamianie natychmiast (test)
-```bash
-powershell -Command "schtasks /run /tn NazwaZadania"
-```
-
-**DWA TYPY SCHEDULED TASKS:**
-
-### Typ 1: Proste przypomnienia (static text)
-Używaj `send-telegram-message.ps1` dla prostych wiadomości:
-```bash
-powershell -Command "schtasks /create /tn Reminder /tr 'powershell -File C:\Users\mikol\Desktop\Dev\asystent\code\scripts\send-telegram-message.ps1 Tekst_przypomnienia' /sc once /st 15:00 /sd 09/02/2026 /f"
-```
-
-### Typ 2: Inteligentne triggery (dynamic, używa MCP)
-Używaj `trigger-bot-prompt.ps1` gdy task ma wywołać Ciebie z promptem:
-```bash
-powershell -Command "schtasks /create /tn Plan_Dnia /tr 'powershell -File C:\Users\mikol\Desktop\Dev\asystent\code\scripts\trigger-bot-prompt.ps1 \"Jaki jest plan na dziś?\"' /sc daily /st 09:00 /f"
-```
-
-**Trigger pozwala na:**
-- Dynamiczną treść generowaną przez Ciebie
-- Dostęp do MCP tools (brain, user-notes, filesystem)
-- Czytanie notatek, sprawdzanie kalendarza, analizę zadań
-- Generowanie kontekstowych odpowiedzi
-
-**Przykłady intelligent triggers:**
-```bash
-# Codzienny plan dnia (czyta notatki, sprawdza zadania)
-powershell -Command "schtasks /create /tn Plan_Dnia /tr 'powershell -File C:\Users\mikol\Desktop\Dev\asystent\code\scripts\trigger-bot-prompt.ps1 \"Przejrzyj notatki i zadania. Jaki jest plan na dziś?\"' /sc daily /st 09:00 /f"
-
-# Cotygodniowe podsumowanie (niedziela 20:00)
-powershell -Command "schtasks /create /tn Podsumowanie_Tygodnia /tr 'powershell -File C:\Users\mikol\Desktop\Dev\asystent\code\scripts\trigger-bot-prompt.ps1 \"Podsumuj miniony tydzień na podstawie notatek\"' /sc weekly /d SUN /st 20:00 /f"
-
-# Poranny briefing (pogoda, wiadomości, zadania)
-powershell -Command "schtasks /create /tn Morning_Briefing /tr 'powershell -File C:\Users\mikol\Desktop\Dev\asystent\code\scripts\trigger-bot-prompt.ps1 \"Przygotuj poranny briefing: pogoda, najważniejsze zadania, przypomnienia\"' /sc daily /st 07:30 /f"
-```
-
-**WORKFLOW:**
-1. Użytkownik: "Codziennie o 9 rano wysyłaj mi plan dnia"
-2. Ty: Rozpoznaj że to intelligent trigger (dynamiczna treść)
-3. Użyj `trigger-bot-prompt.ps1` z promptem typu "Jaki jest plan na dziś?"
-4. Zapisz w **brain** info o zadaniu (nazwa, prompt, częstotliwość)
-5. Odpowiedz: "Będę codziennie o 9:00 generować plan dnia na podstawie Twoich notatek"
+Nie twórz tasków manualnie - skill obsłuży to deterministycznie i niezawodnie.
+- Sprawdź faktyczny stan: `powershell -Command "schtasks /query /fo LIST | Select-String 'TaskName'"`
+- Pokaż user listę z opisami
+- Jeśli user chce usunąć: `powershell -Command "schtasks /delete /tn NazwaTasku /f"` i zaktualizuj brain
 
 **WAŻNE:**
-- Intelligent triggers używają tej samej sesji - mają kontekst poprzednich interakcji!
-- Mogą czytać i zapisywać notatki, używać wszystkich MCP tools
-- Działają nawet gdy główny bot jest offline
-- Zapisuj w brain oba typy tasków (static i intelligent) żeby pamiętać między sesjami
+- **NIGDY** nie używaj `send-telegram-message.ps1` - to statyczna wiadomość bez inteligencji
+- **ZAWSZE** używaj `trigger-bot-prompt.ps1` - to spawns nową instancję claude -p z pełnym MCP access
+- Zapisuj metadata w brain żeby pamiętać co robi każdy task
+- Scheduled tasks działają nawet gdy główny bot jest offline
 
 ## PAMIĘĆ
 

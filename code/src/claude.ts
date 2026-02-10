@@ -3,22 +3,25 @@ import { resolve } from "path";
 import { randomUUID } from "crypto";
 import { readFileSync, writeFileSync } from "fs";
 import { PROJECT_ROOT } from "./config.js";
+import { logger } from "./logger.js";
 
 const MCP_CONFIG = resolve(PROJECT_ROOT, ".mcp.json");
 
 // Load system prompt from .claude/CLAUDE.md
 function loadSystemPrompt(): string {
   try {
-    return readFileSync(resolve(PROJECT_ROOT, ".claude", "CLAUDE.md"), "utf-8");
+    const path = resolve(PROJECT_ROOT, ".claude", "CLAUDE.md");
+    logger.debug("claude", "Loading system prompt", { path });
+    return readFileSync(path, "utf-8");
   } catch (err) {
-    console.error("[claude] Failed to load .claude/CLAUDE.md:", (err as Error).message);
+    logger.error("claude", "Failed to load .claude/CLAUDE.md", { error: (err as Error).message });
     return "Jesteś osobistym asystentem użytkownika. Odpowiadaj po polsku.";
   }
 }
 
 const SYSTEM_PROMPT = loadSystemPrompt();
 
-const ALLOWED_TOOLS = "mcp__user-notes__*,mcp__brain__*,mcp__filesystem__*,mcp__puppeteer__*,mcp__memory__*,WebSearch,WebFetch,Bash";
+const ALLOWED_TOOLS = "mcp__user-notes__*,mcp__brain__*,mcp__filesystem__*,mcp__puppeteer__*,mcp__memory__*,WebSearch,WebFetch,Bash,Write,Read,Skill";
 const MODEL = "claude-sonnet-4-5-20250929";
 const TIMEOUT_MS = 120_000;
 
@@ -57,8 +60,9 @@ function saveSessions(): void {
   };
   try {
     writeFileSync(SESSIONS_FILE, JSON.stringify(state, null, 2));
+    logger.debug("claude", "Saved sessions", { currentSessionId, historyCount: sessionHistory.length });
   } catch (err) {
-    console.error("[sessions] Failed to save:", (err as Error).message);
+    logger.error("claude", "Failed to save sessions", { error: (err as Error).message });
   }
 }
 
@@ -68,11 +72,13 @@ let currentSessionId: string | null = _loaded.currentSessionId;
 const sessionHistory: SessionEntry[] = _loaded.history;
 
 export function resetSession(): void {
+  logger.info("claude", "Resetting session");
   currentSessionId = null;
   saveSessions();
 }
 
 export function switchToSession(id: string): void {
+  logger.info("claude", "Switching to session", { sessionId: id });
   currentSessionId = id;
   saveSessions();
 }
@@ -164,6 +170,12 @@ function spawnClaudeStream(args: string[], userMessage: string, callbacks: Strea
   let proc: ChildProcess;
   let killed = false;
 
+  logger.debug("claude", "Spawning claude subprocess", {
+    args: args.join(" "),
+    messageLength: userMessage.length,
+    cwd: PROJECT_ROOT
+  });
+
   const promise = new Promise<StreamResult>((resolvePromise, rejectPromise) => {
     proc = spawn("claude", args, {
       cwd: PROJECT_ROOT,
@@ -183,20 +195,60 @@ function spawnClaudeStream(args: string[], userMessage: string, callbacks: Strea
       try {
         const parsed = JSON.parse(line);
 
+        // Log raw event for debugging (only when LOG_LEVEL=0)
+        if (process.env.LOG_LEVEL === "0") {
+          logger.debug("claude", "Raw stream event", {
+            type: parsed.type,
+            event: parsed.event ? JSON.stringify(parsed.event).slice(0, 500) : undefined
+          });
+        }
+
         // stream-json wraps events: {"type":"stream_event","event":{...}}
         // But it can also emit {"type":"assistant","message":{...}} at the end
         if (parsed.type === "stream_event" && parsed.event) {
           const evt = parsed.event;
 
-          if (evt.type === "content_block_delta" && evt.delta) {
-            if (evt.delta.type === "text_delta" && evt.delta.text) {
-              fullText += evt.delta.text;
-              callbacks.onText?.(evt.delta.text);
+          if (evt.type === "message_start") {
+            logger.info("claude", "Message started", {
+              model: evt.message?.model,
+              role: evt.message?.role
+            });
+            if (evt.message?.usage) {
+              const u = evt.message.usage;
+              usage = {
+                input_tokens: u.input_tokens ?? 0,
+                output_tokens: u.output_tokens ?? 0,
+                cache_creation_input_tokens: u.cache_creation_input_tokens,
+                cache_read_input_tokens: u.cache_read_input_tokens,
+              };
+              logger.debug("claude", "Initial usage", { usage });
             }
           } else if (evt.type === "content_block_start" && evt.content_block) {
             if (evt.content_block.type === "tool_use") {
-              callbacks.onToolUse?.(evt.content_block.name || "unknown");
+              const toolName = evt.content_block.name || "unknown";
+              const toolId = evt.content_block.id;
+              logger.info("claude", "Tool use started", {
+                tool: toolName,
+                id: toolId
+              });
+              callbacks.onToolUse?.(toolName);
+            } else if (evt.content_block.type === "text") {
+              logger.debug("claude", "Text block started");
             }
+          } else if (evt.type === "content_block_delta" && evt.delta) {
+            if (evt.delta.type === "text_delta" && evt.delta.text) {
+              fullText += evt.delta.text;
+              callbacks.onText?.(evt.delta.text);
+            } else if (evt.delta.type === "input_json_delta" && evt.delta.partial_json) {
+              // Tool input being streamed
+              logger.debug("claude", "Tool input delta", {
+                partial: evt.delta.partial_json.slice(0, 100)
+              });
+            }
+          } else if (evt.type === "content_block_stop") {
+            logger.debug("claude", "Content block stopped", {
+              index: evt.index
+            });
           } else if (evt.type === "message_delta" && evt.usage) {
             usage = {
               input_tokens: evt.usage.input_tokens ?? 0,
@@ -204,18 +256,13 @@ function spawnClaudeStream(args: string[], userMessage: string, callbacks: Strea
               cache_creation_input_tokens: evt.usage.cache_creation_input_tokens,
               cache_read_input_tokens: evt.usage.cache_read_input_tokens,
             };
-          } else if (evt.type === "message_start" && evt.message?.usage) {
-            // Initial usage info (input tokens)
-            const u = evt.message.usage;
-            usage = {
-              input_tokens: u.input_tokens ?? 0,
-              output_tokens: u.output_tokens ?? 0,
-              cache_creation_input_tokens: u.cache_creation_input_tokens,
-              cache_read_input_tokens: u.cache_read_input_tokens,
-            };
+            logger.debug("claude", "Usage updated", { usage });
+          } else if (evt.type === "message_stop") {
+            logger.info("claude", "Message stopped");
           }
         } else if (parsed.type === "result") {
           // Final result message from claude CLI stream-json
+          logger.debug("claude", "Received result event");
           if (parsed.result) {
             fullText = parsed.result;
           }
@@ -227,9 +274,40 @@ function spawnClaudeStream(args: string[], userMessage: string, callbacks: Strea
               cache_read_input_tokens: parsed.usage.cache_read_input_tokens,
             };
           }
+        } else if (parsed.type === "assistant" && parsed.message) {
+          // Sometimes get full message with tool_use content
+          logger.debug("claude", "Received assistant message");
+          if (parsed.message.content && Array.isArray(parsed.message.content)) {
+            for (const block of parsed.message.content) {
+              if (block.type === "tool_use") {
+                logger.info("claude", "Tool use in message", {
+                  tool: block.name,
+                  id: block.id,
+                  input: JSON.stringify(block.input).slice(0, 300)
+                });
+              }
+            }
+          }
+        } else if (parsed.type === "user" && parsed.message) {
+          // User message with tool results
+          logger.debug("claude", "Received user message");
+          if (parsed.message.content && Array.isArray(parsed.message.content)) {
+            for (const block of parsed.message.content) {
+              if (block.type === "tool_result") {
+                logger.info("claude", "Tool result in message", {
+                  tool_use_id: block.tool_use_id,
+                  content: typeof block.content === "string"
+                    ? block.content.slice(0, 300)
+                    : JSON.stringify(block.content).slice(0, 300),
+                  is_error: block.is_error
+                });
+              }
+            }
+          }
         }
-      } catch {
-        // Not valid JSON, skip
+      } catch (err) {
+        // Not valid JSON or parsing error
+        logger.debug("claude", "Failed to parse line", { error: (err as Error).message });
       }
     }
 
@@ -246,13 +324,33 @@ function spawnClaudeStream(args: string[], userMessage: string, callbacks: Strea
     proc.stderr!.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
       stderr += text;
-      if (text.trim()) console.error("[claude stderr]", text.trim());
+
+      // Parse stderr for tool call information
+      const lines = text.split("\n");
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+
+        // Tool call patterns from claude CLI verbose output
+        if (trimmed.includes("Calling tool:") || trimmed.includes("Tool:")) {
+          logger.info("claude", "Tool call detected", { line: trimmed });
+        } else if (trimmed.includes("Tool result:") || trimmed.includes("Result:")) {
+          logger.info("claude", "Tool result", { line: trimmed.slice(0, 200) });
+        } else if (trimmed.includes("Error:") || trimmed.includes("ERROR")) {
+          logger.error("claude", "stderr error", { message: trimmed });
+        } else if (trimmed.startsWith("mcp__") || trimmed.includes("mcp__")) {
+          logger.info("claude", "MCP tool mention", { line: trimmed });
+        } else {
+          logger.debug("claude", "stderr", { message: trimmed });
+        }
+      }
     });
 
     const timer = setTimeout(() => {
       killed = true;
       proc.kill("SIGTERM");
       const err = new Error("Claude timed out after " + TIMEOUT_MS / 1000 + "s");
+      logger.error("claude", "Claude subprocess timed out", { timeoutMs: TIMEOUT_MS });
       callbacks.onError?.(err);
       rejectPromise(err);
     }, TIMEOUT_MS);
@@ -267,15 +365,23 @@ function spawnClaudeStream(args: string[], userMessage: string, callbacks: Strea
         lineBuffer = "";
       }
 
+      logger.debug("claude", "Claude subprocess closed", { code, textLength: fullText.length, usage });
+
       if (code === 0) {
         const result: StreamResult = {
           text: fullText.trim() || "(Claude nie zwrócił odpowiedzi)",
           usage,
         };
+        logger.info("claude", "Claude subprocess completed successfully", {
+          textLength: result.text.length,
+          inputTokens: usage?.input_tokens,
+          outputTokens: usage?.output_tokens
+        });
         callbacks.onComplete?.(result);
         resolvePromise(result);
       } else {
         const err = new Error(`Claude exited with code ${code}: ${stderr.trim()}`);
+        logger.error("claude", "Claude subprocess exited with error", { code, stderr: stderr.trim() });
         callbacks.onError?.(err);
         rejectPromise(err);
       }
@@ -284,6 +390,7 @@ function spawnClaudeStream(args: string[], userMessage: string, callbacks: Strea
     proc.on("error", (err) => {
       clearTimeout(timer);
       const wrapped = new Error(`Failed to spawn claude: ${err.message}`);
+      logger.error("claude", "Failed to spawn claude subprocess", { error: err.message, stack: err.stack });
       callbacks.onError?.(wrapped);
       rejectPromise(wrapped);
     });
@@ -358,6 +465,11 @@ export async function askClaudeStream(userMessage: string, callbacks: StreamCall
     // New session
     currentSessionId = randomUUID();
 
+    logger.info("claude", "Starting new session", {
+      sessionId: currentSessionId,
+      label: userMessage.slice(0, 40)
+    });
+
     sessionHistory.push({
       id: currentSessionId,
       label: userMessage.slice(0, 40),
@@ -386,6 +498,8 @@ export async function askClaudeStream(userMessage: string, callbacks: StreamCall
     return handle.promise;
   } else {
     // Resume existing session
+    logger.info("claude", "Resuming session", { sessionId: currentSessionId });
+
     const args = [
       "--resume", currentSessionId,
       "-p",
@@ -402,7 +516,10 @@ export async function askClaudeStream(userMessage: string, callbacks: StreamCall
       const handle = spawnClaudeStream(args, userMessage, callbacks);
       return await handle.promise;
     } catch (err) {
-      console.error("[claude] Resume failed, retrying as new session:", (err as Error).message);
+      logger.error("claude", "Resume failed, retrying as new session", {
+        sessionId: currentSessionId,
+        error: (err as Error).message
+      });
       currentSessionId = null;
       saveSessions();
       const result = await askClaudeStream(userMessage, callbacks);

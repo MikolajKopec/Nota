@@ -14,6 +14,7 @@ import {
   switchToSession,
   getSessionHistory,
 } from "./claude.js";
+import { logger } from "./logger.js";
 
 type MyContext = FileFlavor<Context>;
 
@@ -95,8 +96,10 @@ async function findNewScreenshots(sinceMs: number): Promise<string[]> {
         results.push(fullPath);
       }
     }
+    logger.debug("bot", `Found ${results.length} new screenshots since ${new Date(sinceMs).toISOString()}`);
     return results;
-  } catch {
+  } catch (err) {
+    logger.error("bot", "Failed to scan screenshot directory", { error: (err as Error).message });
     return [];
   }
 }
@@ -105,17 +108,39 @@ async function findNewScreenshots(sinceMs: number): Promise<string[]> {
 
 async function handleResponse(ctx: MyContext, userMessage: string): Promise<void> {
   const startTime = Date.now();
-  const result = await askClaudeStream(userMessage, {});
+  const toolsUsed: string[] = [];
+
+  logger.info("bot", "Processing message", {
+    userId: ctx.from?.id,
+    messageLength: userMessage.length,
+    preview: userMessage.slice(0, 50)
+  });
+
+  const result = await askClaudeStream(userMessage, {
+    onToolUse: (toolName: string) => {
+      toolsUsed.push(toolName);
+      logger.info("bot", "Tool called", { tool: toolName });
+    },
+  });
 
   if (result.resumeFailed) {
+    logger.warn("bot", "Session resume failed, started new session");
     await ctx.reply("(Nie udało się wznowić sesji — rozpoczynam nową)");
   }
 
   const text = result.text;
+  const duration = Date.now() - startTime;
 
-  console.log(`[response] Length: ${text.length}, hasIMG: ${text.includes("[IMG:")}`);
+  logger.info("bot", "Received response from Claude", {
+    length: text.length,
+    hasIMG: text.includes("[IMG:"),
+    durationMs: duration,
+    toolsUsed: toolsUsed.length > 0 ? toolsUsed : "none",
+    usage: result.usage
+  });
+
   if (text.includes("[IMG:")) {
-    console.log(`[response] IMG markers found, extracting...`);
+    logger.debug("bot", "Extracting IMG markers from response");
     await sendResponseWithImages(ctx, text);
   } else {
     await sendLongMessage(ctx, text);
@@ -123,14 +148,14 @@ async function handleResponse(ctx: MyContext, userMessage: string): Promise<void
     // Fallback: send any screenshots created during this interaction
     const newScreenshots = await findNewScreenshots(startTime);
     if (newScreenshots.length > 0) {
-      console.log(`[img-fallback] Found ${newScreenshots.length} new screenshot(s)`);
+      logger.info("bot", "Sending fallback screenshots", { count: newScreenshots.length });
       for (const imgPath of newScreenshots) {
         try {
           const buffer = await readFile(imgPath);
-          console.log(`[img-fallback] Sending: ${imgPath} (${buffer.length} bytes)`);
+          logger.debug("bot", "Sending fallback screenshot", { path: imgPath, size: buffer.length });
           await ctx.replyWithPhoto(new InputFile(buffer, "screenshot.png"));
         } catch (err) {
-          console.error(`[img-fallback] Failed:`, err);
+          logger.error("bot", "Failed to send fallback screenshot", { path: imgPath, error: (err as Error).message });
         }
         unlink(imgPath).catch(() => {});
       }
@@ -156,17 +181,19 @@ async function sendResponseWithImages(ctx: MyContext, text: string): Promise<voi
     await sendLongMessage(ctx, cleanText);
   }
 
+  logger.info("bot", "Sending response with images", { imageCount: paths.length });
+
   // Send images
   for (const imgPath of paths) {
     try {
-      console.log(`[img] Sending: ${imgPath}`);
+      logger.debug("bot", "Reading image file", { path: imgPath });
       const buffer = await readFile(imgPath);
-      console.log(`[img] Read ${buffer.length} bytes from ${imgPath}`);
+      logger.debug("bot", "Sending image", { path: imgPath, size: buffer.length });
       await ctx.replyWithPhoto(new InputFile(buffer, "screenshot.png"));
-      console.log(`[img] Sent successfully`);
+      logger.info("bot", "Image sent successfully", { path: imgPath });
       unlink(imgPath).catch(() => {});
     } catch (err) {
-      console.error(`[img] Failed:`, err);
+      logger.error("bot", "Failed to send image", { path: imgPath, error: (err as Error).message });
       await ctx.reply(`\u26a0\ufe0f Nie uda\u0142o si\u0119 wys\u0142a\u0107 obrazu: ${imgPath}`);
     }
   }
@@ -204,7 +231,7 @@ export function createBot(): Bot<MyContext> {
   // Auth middleware — ignore messages from strangers
   bot.use(async (ctx, next) => {
     if (ctx.from?.id !== ALLOWED_USER_ID) {
-      console.log(`Ignored message from user ${ctx.from?.id}`);
+      logger.warn("bot", "Unauthorized access attempt", { userId: ctx.from?.id, username: ctx.from?.username });
       return;
     }
     await next();
@@ -212,12 +239,14 @@ export function createBot(): Bot<MyContext> {
 
   // /start command
   bot.command("start", async (ctx) => {
+    logger.info("bot", "Command: /start");
     resetSession();
     await ctx.reply("Cze\u015b\u0107! Wy\u015blij mi wiadomo\u015b\u0107 tekstow\u0105 lub g\u0142osow\u0105, a zarz\u0105dz\u0119 Twoj\u0105 krypt\u0105 Obsidian.");
   });
 
   // /new — reset session
   bot.command("new", async (ctx) => {
+    logger.info("bot", "Command: /new");
     resetSession();
     await ctx.reply("Nowa sesja. Nast\u0119pna wiadomo\u015b\u0107 rozpocznie now\u0105 rozmow\u0119.");
   });
@@ -255,6 +284,33 @@ export function createBot(): Bot<MyContext> {
     await ctx.editMessageText(`Przywr\u00f3cono sesj\u0119: ${entry.label}`);
   });
 
+  // /tasks — manage scheduled tasks
+  bot.command("tasks", async (ctx) => {
+    logger.info("bot", "Command: /tasks");
+    await enqueue(async () => {
+      const stopTyping = startTypingLoop(ctx);
+      try {
+        const startMs = Date.now();
+        const result = await askClaudeStream(
+          "Pokaż wszystkie aktywne scheduled tasks z brain/Asystent/scheduled-tasks.md. Dla każdego taska wyświetl: nazwę, harmonogram, opis, status. Dodaj instrukcję jak użytkownik może nimi zarządzać (disable, enable, delete).",
+          {}
+        );
+
+        stopTyping();
+        await handleResponse(ctx, result.text, startMs);
+
+        logger.info("bot", "Tasks command completed", {
+          durationMs: Date.now() - startMs,
+          textLength: result.text.length
+        });
+      } catch (err) {
+        stopTyping();
+        logger.error("bot", "Error in /tasks command", { error: (err as Error).message });
+        await ctx.reply(`❌ Błąd: ${(err as Error).message}`);
+      }
+    });
+  });
+
   // /test — debug diagnostics
   bot.command("test", async (ctx) => {
     await ctx.reply("\u23f3 Running diagnostics...");
@@ -264,6 +320,59 @@ export function createBot(): Bot<MyContext> {
     } catch (err) {
       await ctx.reply(`Debug error: ${(err as Error).message}`);
     }
+  });
+
+  // /help — show available commands
+  bot.command("help", async (ctx) => {
+    logger.info("bot", "Command: /help");
+    const helpText = `🤖 Skryba - Twój asystent Obsidian
+
+📝 KOMENDY:
+/notatka <tekst> - Zapisz notatkę
+/szukaj <zapytanie> - Przeszukaj notatki
+/podsumuj - Podsumuj ostatnie notatki
+/tasks - Zarządzaj scheduled tasks
+/new - Nowa sesja
+/rewind - Przywróć sesję
+/help - Ta wiadomość
+
+💬 WIADOMOŚCI:
+• Tekst - Rozmowa z asystentem
+• Głos - Transkrypcja Whisper
+• Zdjęcie - Analiza obrazu
+
+🎨 SKILLS (16):
+
+📄 Dokumenty:
+• docx - Dokumenty Word
+• pdf - Przetwarzanie PDF
+• pptx - Prezentacje PowerPoint
+• xlsx - Arkusze Excel
+
+🎨 Grafika:
+• canvas-design - Postery i grafiki
+• algorithmic-art - Sztuka generatywna
+• slack-gif-creator - Animowane GIFy
+• theme-factory - Motywy HTML
+
+💻 Web & Development:
+• frontend-design - React + Tailwind
+• web-artifacts-builder - HTML dashboards
+• webapp-testing - Testy Playwright
+
+🔧 Meta & Narzędzia:
+• mcp-builder - Tworzenie MCP servers
+• skill-creator - Tworzenie skills
+• brand-guidelines - Branding Anthropic
+• internal-comms - Komunikacja
+• doc-coauthoring - Współpraca nad docs
+
+Przykłady:
+"Narysuj poster BELIEVE"
+"Stwórz arkusz budżetu"
+"Pomóż stworzyć skill"`;
+
+    await ctx.reply(helpText);
   });
 
   // --- Faza 5: Telegram commands (BEFORE message:text!) ---
