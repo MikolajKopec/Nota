@@ -165,7 +165,7 @@ export async function scheduleRestart(): Promise<void> {
     const createCmd = `powershell -Command "` +
       `$action = New-ScheduledTaskAction -Execute '${nodeExe}' -Argument '\\"${distIndex}\\"' -WorkingDirectory '${codeDir}'; ` +
       `$trigger = New-ScheduledTaskTrigger -Once -At '${timeStr}'; ` +
-      `$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -DeleteExpiredTaskAfter 00:00:01; ` +
+      `$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable; ` +
       `$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive; ` +
       `Register-ScheduledTask -TaskName '${taskName}' -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description 'One-time bot restart after update' -Force | Out-Null` +
       `"`;
