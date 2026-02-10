@@ -473,13 +473,28 @@ Examples:
       await ctx.reply(result.message, { parse_mode: "Markdown" });
 
       if (result.success && result.message.includes("restart")) {
-        logger.info("bot", "Update successful, restarting bot in 3 seconds");
+        // Check if autostart is enabled before restarting
+        const autostartStatus = await getAutostartStatus();
 
-        // Give time for message to be sent
-        setTimeout(() => {
-          logger.info("bot", "Restarting bot after update");
-          process.exit(0); // Exit gracefully - autostart or process manager will restart
-        }, 3000);
+        if (autostartStatus.enabled) {
+          logger.info("bot", "Update successful, restarting bot in 3 seconds (autostart enabled)");
+          await ctx.reply("♻️ Restarting bot...");
+
+          // Give time for message to be sent
+          setTimeout(() => {
+            logger.info("bot", "Restarting bot after update");
+            process.exit(0); // Exit gracefully - autostart will restart
+          }, 3000);
+        } else {
+          logger.info("bot", "Update successful, but autostart disabled - manual restart required");
+          await ctx.reply(
+            "⚠️ **Manual restart required**\n\n" +
+            "Autostart is disabled. Please restart the bot manually:\n" +
+            "```\nnpm run dev\n```\n\n" +
+            "Or enable autostart: `/autostart enable`",
+            { parse_mode: "Markdown" }
+          );
+        }
       }
     } catch (err) {
       logger.error("bot", "Error in /updates command", { error: (err as Error).message });
