@@ -1,4 +1,4 @@
-# 🤖 Asystent
+# 🤖 Nota
 
 > **Your AI Personal Assistant - Flat Rate, Unlimited Usage**
 >

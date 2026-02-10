@@ -1,7 +1,7 @@
 {
-  "name": "asystent",
+  "name": "nota",
   "version": "1.0.0",
-  "description": "Telegram voice → Obsidian manager via Claude CLI",
+  "description": "AI-powered personal assistant for Obsidian via Telegram",
   "type": "module",
   "scripts": {
     "setup": "cd .. && npx tsx setup.ts",

@@ -99,7 +99,7 @@ interface Config {
 async function main() {
   console.log(`
 ╔═══════════════════════════════════════╗
-║   🤖 Asystent Setup Wizard            ║
+║   🤖 Nota Setup Wizard                ║
 ║   Interactive configuration tool      ║
 ╚═══════════════════════════════════════╝
 `);

@@ -1,6 +1,6 @@
 # 🏗️ Architecture Documentation
 
-Deep technical documentation for Asystent - the AI-powered Telegram bot for Obsidian integration.
+Deep technical documentation for Nota - the AI-powered Telegram bot for Obsidian integration.
 
 ---
 
@@ -21,7 +21,7 @@ Deep technical documentation for Asystent - the AI-powered Telegram bot for Obsi
 
 ## System Overview
 
-Asystent is built on a **subprocess architecture** where the main bot process spawns Claude Code CLI instances for AI processing. This design provides:
+Nota is built on a **subprocess architecture** where the main bot process spawns Claude Code CLI instances for AI processing. This design provides:
 
 - **Isolation**: Each Claude interaction runs in its own process
 - **Streaming**: Real-time response updates via NDJSON streaming
@@ -1083,7 +1083,7 @@ Get-Content bot.log -Wait -Tail 20
 
 ## Conclusion
 
-Asystent's architecture prioritizes:
+Nota's architecture prioritizes:
 
 - **Simplicity**: Minimal dependencies, clear abstractions
 - **Extensibility**: MCP allows adding tools without code changes

@@ -1,6 +1,6 @@
-# Contributing to Asystent
+# Contributing to Nota
 
-Thank you for your interest in contributing to Asystent! This document provides guidelines and instructions for contributing to the project.
+Thank you for your interest in contributing to Nota! This document provides guidelines and instructions for contributing to the project.
 
 ---
 

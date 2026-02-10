@@ -325,7 +325,7 @@ export function createBot(): Bot<MyContext> {
   // /help — show available commands
   bot.command("help", async (ctx) => {
     logger.info("bot", "Command: /help");
-    const helpText = `🤖 Skryba - Twój asystent Obsidian
+    const helpText = `🤖 Nota - Your intelligent note companion
 
 📝 KOMENDY:
 /notatka <tekst> - Zapisz notatkę
