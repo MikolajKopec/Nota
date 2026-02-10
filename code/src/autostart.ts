@@ -49,10 +49,10 @@ export async function getAutostartStatus(): Promise<AutostartStatus> {
  * Enable autostart - creates scheduled task that runs bot at system startup
  */
 export async function enableAutostart(): Promise<void> {
-  try {
-    const codeDir = resolve(PROJECT_ROOT);
-    const logFile = resolve(PROJECT_ROOT, "..", "bot.log");
+  const codeDir = resolve(PROJECT_ROOT);
+  const logFile = resolve(PROJECT_ROOT, "..", "bot.log");
 
+  try {
     // Use npx tsx to run the bot
     const command = `cmd.exe`;
     const args = `/c cd /d "${codeDir}" && npx tsx src\\index.ts >> "${logFile}" 2>&1`;
