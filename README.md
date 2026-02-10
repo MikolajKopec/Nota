@@ -253,15 +253,17 @@ The wizard will:
 - **Auto-install** Claude Code CLI if missing
 - **Help you create** a Telegram bot (or use existing one)
 - **Auto-detect** your Telegram User ID
+- **Suggest common directories** (Desktop, Downloads, Documents, Pictures) for filesystem access
 - **Verify** everything works with a test message
 
 It will ask you for:
 
-✅ **Telegram Bot Token** - From BotFather (see checklist above)
-✅ **Your Telegram User ID** - From @userinfobot (see checklist above)
+✅ **Telegram Bot Token** - Auto-created or from existing bot
+✅ **Your Telegram User ID** - Auto-detected via polling
 ✅ **Bash Path** - Auto-detected (you can confirm or change)
 ✅ **Obsidian Vault Path** - Your main notes vault
 ✅ **Brain Vault Path** (optional) - Separate vault for bot memory
+✅ **Filesystem Access** (optional) - Select from suggested directories (Desktop, Downloads, etc.) or add custom paths
 ✅ **Whisper URL** (optional) - If using voice transcription
 ✅ **Optional Features** - Enable/disable voice, scheduler, screenshots
 
@@ -384,7 +386,10 @@ Model Context Protocol servers provide the bot with access to external tools and
 
 **Optional Servers:**
 - **brain**: Separate vault for bot's persistent memory
-- **filesystem**: File system access for attachments
+- **filesystem**: File system access for working with files
+  - Wizard suggests common directories (Desktop, Downloads, Documents, Pictures)
+  - Allows custom paths for advanced users
+  - Useful for: processing documents, saving attachments, file operations
 - **puppeteer**: Web automation and screenshots
 
 Example configuration:
