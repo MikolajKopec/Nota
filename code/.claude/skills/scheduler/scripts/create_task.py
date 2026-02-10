@@ -117,6 +117,10 @@ def create_windows_task(task_name, prompt, schedule_info, trigger_script):
 
     tr_path = f"powershell -File {trigger_script} \\\"{safe_prompt}\\\""
 
+    # Get current username for task context
+    import getpass
+    username = getpass.getuser()
+
     # Build schtasks command
     parts = [
         'powershell', '-Command',
@@ -132,6 +136,9 @@ def create_windows_task(task_name, prompt, schedule_info, trigger_script):
         parts.append(f"/sc weekly /d {schedule_info['days']} /st {schedule_info['time']}")
     elif schedule_info['type'] == 'monthly':
         parts.append(f"/sc monthly /d {schedule_info['day']} /st {schedule_info['time']}")
+
+    # Run as current user with highest privileges
+    parts.append(f'/ru {username} /rl HIGHEST')
 
     # Force overwrite
     parts.append('/f"')
