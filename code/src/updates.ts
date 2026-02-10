@@ -133,3 +133,72 @@ export async function checkAndNotify(): Promise<{ hasUpdates: boolean; message: 
 
   return { hasUpdates: info.hasUpdates, message };
 }
+
+/**
+ * Apply available updates (git pull + npm run build)
+ */
+export async function applyUpdates(): Promise<{ success: boolean; message: string }> {
+  try {
+    logger.info("updates", "Starting update process");
+
+    // Step 1: Git pull
+    logger.debug("updates", "Running git pull");
+    const { stdout: pullOutput, stderr: pullError } = await execAsync("git pull");
+    logger.debug("updates", "Git pull output", { stdout: pullOutput, stderr: pullError });
+
+    if (pullOutput.includes("Already up to date")) {
+      logger.info("updates", "No updates to apply");
+      return {
+        success: true,
+        message: "✅ Already up to date!",
+      };
+    }
+
+    // Step 2: Build
+    logger.debug("updates", "Running npm run build");
+    const { stdout: buildOutput } = await execAsync("npm run build", {
+      cwd: process.cwd(),
+    });
+    logger.debug("updates", "Build output", { stdout: buildOutput });
+
+    logger.info("updates", "Update applied successfully");
+    return {
+      success: true,
+      message:
+        "✅ **Update successful!**\n\n" +
+        "Changes applied. Bot will restart in 3 seconds...",
+    };
+  } catch (err) {
+    logger.error("updates", "Failed to apply updates", {
+      error: (err as Error).message,
+    });
+
+    const errorMsg = (err as Error).message;
+
+    // Check for common errors
+    if (errorMsg.includes("CONFLICT")) {
+      return {
+        success: false,
+        message:
+          "❌ **Update failed - Git conflict**\n\n" +
+          "Manual intervention required:\n" +
+          "```\ngit status\n# Resolve conflicts\ngit pull\nnpm run build\n```",
+      };
+    }
+
+    if (errorMsg.includes("uncommitted changes")) {
+      return {
+        success: false,
+        message:
+          "❌ **Update failed - Uncommitted changes**\n\n" +
+          "You have local changes. Commit or stash them first:\n" +
+          "```\ngit status\ngit stash\ngit pull\nnpm run build\n```",
+      };
+    }
+
+    return {
+      success: false,
+      message: `❌ **Update failed**\n\n${errorMsg}`,
+    };
+  }
+}

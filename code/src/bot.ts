@@ -20,7 +20,7 @@ import {
   enableAutostart,
   disableAutostart,
 } from "./autostart.js";
-import { checkForUpdates, formatUpdateMessage } from "./updates.js";
+import { checkForUpdates, formatUpdateMessage, applyUpdates } from "./updates.js";
 
 type MyContext = FileFlavor<Context>;
 
@@ -339,7 +339,7 @@ export function createBot(): Bot<MyContext> {
 /summary - Summarize recent notes
 /tasks - Manage scheduled tasks
 /autostart - Bot autostart settings
-/updates - Check for updates
+/updates - Check and install updates
 /new - New session
 /rewind - Resume previous session
 /help - This message
@@ -448,7 +448,7 @@ Examples:
     }
   });
 
-  // /updates — check for available updates
+  // /updates — check and apply updates automatically
   bot.command("updates", async (ctx) => {
     logger.info("bot", "Command: /updates");
 
@@ -456,18 +456,34 @@ Examples:
       await ctx.reply("🔍 Checking for updates...");
 
       const info = await checkForUpdates();
-      const message = formatUpdateMessage(info);
 
-      await ctx.reply(message, { parse_mode: "Markdown" });
+      if (!info.hasUpdates) {
+        await ctx.reply("✅ Bot is up to date!");
+        return;
+      }
 
-      if (info.hasUpdates) {
-        logger.info("bot", "Updates found", {
-          behindBy: info.gitBehindBy,
-        });
+      // Updates available - show info
+      const infoMessage = formatUpdateMessage(info);
+      await ctx.reply(infoMessage, { parse_mode: "Markdown" });
+
+      // Apply updates
+      await ctx.reply("⏳ Applying update...");
+      const result = await applyUpdates();
+
+      await ctx.reply(result.message, { parse_mode: "Markdown" });
+
+      if (result.success && result.message.includes("restart")) {
+        logger.info("bot", "Update successful, restarting bot in 3 seconds");
+
+        // Give time for message to be sent
+        setTimeout(() => {
+          logger.info("bot", "Restarting bot after update");
+          process.exit(0); // Exit gracefully - autostart or process manager will restart
+        }, 3000);
       }
     } catch (err) {
       logger.error("bot", "Error in /updates command", { error: (err as Error).message });
-      await ctx.reply(`❌ Error checking updates: ${(err as Error).message}`);
+      await ctx.reply(`❌ Error: ${(err as Error).message}`);
     }
   });
 
