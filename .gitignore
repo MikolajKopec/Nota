@@ -9,17 +9,26 @@ dist/
 
 # Logs
 *.log
+bot.log
+
+# Session data
+sessions.json
 
 # Audio files (voice messages)
 *.ogg
 *.wav
 *.mp3
 
+# Temp files
+%TEMP%/asystent-screenshots/
+
 # Claude Code
 .claude/
 
 # MCP config (contains local paths)
 assistant-mcp.json
+code/.mcp.json
+code/memory.jsonl
 
 # Windows artifacts
 nul
