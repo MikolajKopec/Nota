@@ -47,34 +47,71 @@ function getCommonDirectories(): { name: string; path: string }[] {
   return commonDirs.filter(dir => existsSync(dir.path));
 }
 
-// Auto-detect bash path
+// Test if bash has Python available
+function testBashPython(bashPath: string): boolean {
+  try {
+    const result = execSync(`"${bashPath}" -c "python --version 2>&1 || python3 --version 2>&1"`, {
+      encoding: 'utf-8',
+      stdio: 'pipe',
+      timeout: 5000
+    });
+    return result.includes('Python');
+  } catch {
+    return false;
+  }
+}
+
+// Auto-detect bash path with Python support
 function findBashPath(): string | null {
   const isWindows = process.platform === 'win32';
 
   if (isWindows) {
-    // Try to find bash using 'where' command
-    try {
-      const result = execSync('where bash', { encoding: 'utf-8' }).trim();
-      const paths = result.split('\n').map(p => p.trim()).filter(p => p);
-      if (paths.length > 0) {
-        return paths[0]; // Return first match
-      }
-    } catch (e) {
-      // 'where' failed, try common locations
-    }
-
-    // Common Windows locations for Git Bash
+    // Common Windows locations for Git Bash (check these first)
     const commonPaths = [
+      'D:\\Git\\bin\\bash.exe',
       'C:\\Program Files\\Git\\bin\\bash.exe',
       'C:\\Program Files (x86)\\Git\\bin\\bash.exe',
-      'D:\\Git\\bin\\bash.exe',
       'C:\\Git\\bin\\bash.exe',
     ];
 
+    // Find first bash with Python support
     for (const path of commonPaths) {
-      if (existsSync(path)) {
+      if (existsSync(path) && testBashPython(path)) {
         return path;
       }
+    }
+
+    // Fallback: try 'where' command, but prefer bash with Python
+    try {
+      const result = execSync('where bash', { encoding: 'utf-8' }).trim();
+      const paths = result.split('\n').map(p => p.trim()).filter(p => p);
+
+      // First, try to find Git Bash (not WSL) with Python
+      const gitBashPaths = paths.filter(p => !p.includes('Windows\\System32'));
+      for (const path of gitBashPaths) {
+        if (testBashPython(path)) {
+          return path;
+        }
+      }
+
+      // Last resort: any bash with Python (even WSL)
+      for (const path of paths) {
+        if (testBashPython(path)) {
+          return path;
+        }
+      }
+
+      // If no bash has Python, return first Git Bash anyway (user might install Python later)
+      if (gitBashPaths.length > 0) {
+        return gitBashPaths[0];
+      }
+
+      // Absolute last resort: any bash
+      if (paths.length > 0) {
+        return paths[0];
+      }
+    } catch (e) {
+      // 'where' failed
     }
   } else {
     // Unix-like systems - try 'which bash'
@@ -568,12 +605,19 @@ async function main() {
     const detectedBashPath = findBashPath();
 
     if (detectedBashPath) {
+      const hasPython = testBashPython(detectedBashPath);
       console.log(`   ✅ Found bash at: ${detectedBashPath}`);
+      if (hasPython) {
+        console.log('   ✅ Python is available in this bash');
+      } else {
+        console.log('   ⚠️  Warning: Python not detected in this bash');
+        console.log('      Task scheduler may not work without Python');
+      }
       console.log('');
 
       const useDetected = await prompt.confirm(
         'Use this bash path?',
-        true
+        hasPython  // Default to yes only if has Python
       );
 
       if (useDetected) {
@@ -658,33 +702,32 @@ async function main() {
     });
 
     console.log('');
-    console.log('💡 Brain Vault (optional but recommended):');
+    console.log('💡 Brain Vault (required):');
     console.log('   A separate vault where the bot stores its memory,');
-    console.log('   preferences, and learned patterns. Keeps your main');
-    console.log('   vault clean and organized.');
+    console.log('   preferences, learned patterns, and scheduled task metadata.');
+    console.log('   Keeps your main vault clean and organized.');
+    console.log('');
+    console.log('   ⚠️  Required for: task scheduler, preferences, action history');
     console.log('');
 
-    const useBrainVault = await prompt.confirm(
-      'Create/use a separate brain vault for bot memory?',
-      true
-    );
+    config.brainVaultPath = await prompt.ask({
+      name: 'brainVaultPath',
+      message: 'Enter path to brain vault',
+      default: join(dirname(config.obsidianVaultPath), 'claude'),
+      required: true,
+    });
 
-    if (useBrainVault) {
-      config.brainVaultPath = await prompt.ask({
-        name: 'brainVaultPath',
-        message: 'Enter path to brain vault (or leave empty to create one)',
-        default: join(dirname(config.obsidianVaultPath), 'claude'),
-      });
-
-      if (!existsSync(config.brainVaultPath)) {
-        const create = await prompt.confirm(
-          `Brain vault doesn't exist. Create at ${config.brainVaultPath}?`,
-          true
-        );
-        if (create) {
-          mkdirSync(config.brainVaultPath, { recursive: true });
-          console.log('✅ Brain vault created!');
-        }
+    if (!existsSync(config.brainVaultPath)) {
+      const create = await prompt.confirm(
+        `Brain vault doesn't exist. Create at ${config.brainVaultPath}?`,
+        true
+      );
+      if (create) {
+        mkdirSync(config.brainVaultPath, { recursive: true });
+        console.log('✅ Brain vault created!');
+      } else {
+        console.log('❌ Brain vault is required for bot operation. Please create it manually.');
+        process.exit(1);
       }
     }
 
@@ -864,13 +907,12 @@ LOG_LEVEL=${config.logLevel}  # ${['DEBUG', 'INFO', 'WARN', 'ERROR'][parseInt(co
       mcpServers: {},
     };
 
-    if (config.brainVaultPath) {
-      mcpConfig.mcpServers.brain = {
-        type: 'stdio',
-        command: 'npx',
-        args: ['-y', '@mauricio.wolff/mcp-obsidian@latest', config.brainVaultPath],
-      };
-    }
+    // Brain vault is required
+    mcpConfig.mcpServers.brain = {
+      type: 'stdio',
+      command: 'npx',
+      args: ['-y', '@mauricio.wolff/mcp-obsidian@latest', config.brainVaultPath!],
+    };
 
     mcpConfig.mcpServers['user-notes'] = {
       type: 'stdio',
@@ -917,9 +959,7 @@ LOG_LEVEL=${config.logLevel}  # ${['DEBUG', 'INFO', 'WARN', 'ERROR'][parseInt(co
     console.log('   ✅ Created code/.mcp.json');
     console.log('');
     console.log('   MCP servers configured:');
-    if (config.brainVaultPath) {
-      console.log('   • brain - Bot memory vault');
-    }
+    console.log('   • brain - Bot memory vault (required)');
     console.log('   • user-notes - Your Obsidian vault');
     if (config.mcpServers.filesystem.length > 0) {
       console.log('   • filesystem - File access');
