@@ -166,25 +166,32 @@ All core features (notes, search, voice, screenshots) work identically across pl
 
 ### 📋 Pre-Installation Checklist
 
-Before running the setup wizard, gather the following information:
+**Good news!** The setup wizard now **automates most steps**. You only need:
 
-#### 1️⃣ **Create Your Telegram Bot**
+#### ✅ **Required:**
+- **Node.js 18+** - [Download here](https://nodejs.org/)
+- **Obsidian vault** - Can be empty, or create during setup
+- **Git Bash** (Windows only) - [Download here](https://git-scm.com/)
+  - macOS/Linux: bash is already installed
 
-1. Open Telegram and search for [@BotFather](https://t.me/BotFather)
-2. Send `/newbot` command
-3. Follow the prompts:
-   - **Bot name**: Your bot's display name (e.g., "My Personal Assistant")
-   - **Bot username**: Must end in "bot" (e.g., "my_assistant_bot")
-4. **Save the token** - BotFather will send you a token like:
-   ```
-   123456789:ABCdefGHIjklMNOpqrsTUVwxyz
-   ```
-   ⚠️ Keep this token secret! Anyone with it can control your bot.
+#### 🤖 **Optional - Wizard Can Do This For You:**
 
-#### 2️⃣ **Get Your Telegram User ID**
+The wizard offers to:
+- **Auto-install Claude Code CLI** if missing
+- **Create a Telegram bot** interactively via @BotFather
+- **Auto-detect your User ID** by polling Telegram API
+- **Verify everything works** with a test message
 
-1. In Telegram, search for [@userinfobot](https://t.me/userinfobot)
-2. Start a chat or send any message
+But if you prefer to prepare in advance:
+
+**Create Telegram Bot** (or let wizard help):
+1. Open Telegram → search [@BotFather](https://t.me/BotFather)
+2. Send `/newbot` → follow prompts
+3. Save the token: `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`
+
+**Get Your User ID** (or let wizard auto-detect):
+1. Search [@userinfobot](https://t.me/userinfobot)
+2. Send any message
 3. The bot will reply with your user ID (a numeric value like `123456789`)
 4. **Save this ID** - only this user will be able to use your bot
 
@@ -238,10 +245,17 @@ If you want voice transcription:
 ```bash
 git clone https://github.com/MikolajKopec/Nota.git
 cd Nota
-npx tsx setup.ts  # Run the setup wizard
+npm install        # Install wizard dependencies
+npx tsx setup.ts   # Run the setup wizard
 ```
 
-The wizard will ask you for:
+The wizard will:
+- **Auto-install** Claude Code CLI if missing
+- **Help you create** a Telegram bot (or use existing one)
+- **Auto-detect** your Telegram User ID
+- **Verify** everything works with a test message
+
+It will ask you for:
 
 ✅ **Telegram Bot Token** - From BotFather (see checklist above)
 ✅ **Your Telegram User ID** - From @userinfobot (see checklist above)
