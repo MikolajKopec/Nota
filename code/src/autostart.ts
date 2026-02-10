@@ -62,7 +62,7 @@ export async function enableAutostart(): Promise<void> {
       `$action = New-ScheduledTaskAction -Execute '${command}' -Argument '${args}' -WorkingDirectory '${codeDir}'; ` +
       `$trigger = New-ScheduledTaskTrigger -AtStartup; ` +
       `$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1); ` +
-      `$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited; ` +
+      `$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest; ` +
       `Register-ScheduledTask -TaskName '${TASK_NAME}' -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description 'Asystent Telegram bot - starts automatically on system startup' -Force | Out-Null` +
       `"`;
 
@@ -70,6 +70,22 @@ export async function enableAutostart(): Promise<void> {
     logger.info("autostart", "Autostart enabled successfully");
   } catch (err) {
     logger.error("autostart", "Failed to enable autostart", { error: (err as Error).message });
+
+    // Check if it's a permission error
+    const errorMsg = (err as Error).message;
+    if (errorMsg.includes("PermissionDenied") || errorMsg.includes("Odmowa dostępu") || errorMsg.includes("0x80070005")) {
+      throw new Error(
+        "Permission denied. To enable autostart:\n" +
+        "1. Run the bot as Administrator, OR\n" +
+        "2. Manually create the task:\n" +
+        "   - Open Task Scheduler\n" +
+        "   - Create Basic Task\n" +
+        "   - Trigger: At startup\n" +
+        `   - Action: Start program: npx tsx src\\index.ts\n` +
+        `   - Working directory: ${codeDir}`
+      );
+    }
+
     throw new Error(`Failed to enable autostart: ${(err as Error).message}`);
   }
 }

@@ -5,61 +5,45 @@ import { logger } from "./logger.js";
 const execAsync = promisify(exec);
 
 export interface UpdateInfo {
-  hasGitUpdates: boolean;
+  hasUpdates: boolean;
   gitBehindBy?: number;
   gitAheadBy?: number;
   currentBranch?: string;
   remoteBranch?: string;
-  hasNpmUpdates: boolean;
-  outdatedPackages?: Array<{
-    package: string;
-    current: string;
-    wanted: string;
-    latest: string;
-  }>;
   error?: string;
 }
 
 /**
- * Check for available updates from git and npm
+ * Check for available updates from git remote
  */
 export async function checkForUpdates(): Promise<UpdateInfo> {
-  const result: UpdateInfo = {
-    hasGitUpdates: false,
-    hasNpmUpdates: false,
-  };
-
   try {
-    // Check git updates
     const gitInfo = await checkGitUpdates();
-    Object.assign(result, gitInfo);
 
-    // Check npm updates
-    const npmInfo = await checkNpmUpdates();
-    Object.assign(result, npmInfo);
-
-    if (result.hasGitUpdates || result.hasNpmUpdates) {
+    if (gitInfo.hasUpdates) {
       logger.info("updates", "Updates available", {
-        git: result.hasGitUpdates,
-        npm: result.hasNpmUpdates,
+        behindBy: gitInfo.gitBehindBy,
       });
     } else {
       logger.debug("updates", "No updates available");
     }
+
+    return gitInfo;
   } catch (err) {
     logger.error("updates", "Failed to check for updates", {
       error: (err as Error).message,
     });
-    result.error = (err as Error).message;
+    return {
+      hasUpdates: false,
+      error: (err as Error).message,
+    };
   }
-
-  return result;
 }
 
 /**
  * Check for git updates from remote
  */
-async function checkGitUpdates(): Promise<Partial<UpdateInfo>> {
+async function checkGitUpdates(): Promise<UpdateInfo> {
   try {
     // Fetch latest from remote
     await execAsync("git fetch origin --quiet");
@@ -96,7 +80,7 @@ async function checkGitUpdates(): Promise<Partial<UpdateInfo>> {
     });
 
     return {
-      hasGitUpdates: behindBy > 0,
+      hasUpdates: behindBy > 0,
       gitBehindBy: behindBy,
       gitAheadBy: aheadBy,
       currentBranch,
@@ -107,55 +91,10 @@ async function checkGitUpdates(): Promise<Partial<UpdateInfo>> {
       error: (err as Error).message,
     });
     // Not a git repo or no remote - not an error
-    return { hasGitUpdates: false };
+    return { hasUpdates: false };
   }
 }
 
-/**
- * Check for npm package updates
- */
-async function checkNpmUpdates(): Promise<Partial<UpdateInfo>> {
-  try {
-    // Run npm outdated with json output
-    const { stdout } = await execAsync("npm outdated --json", {
-      cwd: process.cwd(),
-      // npm outdated exits with code 1 when updates are found, so ignore errors
-      // We'll parse the json output instead
-    }).catch((err) => {
-      // npm outdated returns exit code 1 when updates exist
-      // but still provides json output in stdout
-      return { stdout: err.stdout || "{}" };
-    });
-
-    if (!stdout || stdout.trim() === "{}") {
-      logger.debug("updates", "No npm updates available");
-      return { hasNpmUpdates: false };
-    }
-
-    const outdated = JSON.parse(stdout);
-    const packages = Object.entries(outdated).map(([pkg, info]: [string, any]) => ({
-      package: pkg,
-      current: info.current || "unknown",
-      wanted: info.wanted || "unknown",
-      latest: info.latest || "unknown",
-    }));
-
-    logger.debug("updates", "NPM updates found", {
-      count: packages.length,
-      packages: packages.map((p) => p.package),
-    });
-
-    return {
-      hasNpmUpdates: packages.length > 0,
-      outdatedPackages: packages,
-    };
-  } catch (err) {
-    logger.warn("updates", "Failed to check npm updates", {
-      error: (err as Error).message,
-    });
-    return { hasNpmUpdates: false };
-  }
-}
 
 /**
  * Format update info as user-friendly message
@@ -165,46 +104,24 @@ export function formatUpdateMessage(info: UpdateInfo): string {
     return `❌ Failed to check for updates: ${info.error}`;
   }
 
-  if (!info.hasGitUpdates && !info.hasNpmUpdates) {
-    return "✅ Everything is up to date!";
+  if (!info.hasUpdates) {
+    return "✅ Bot is up to date!";
   }
 
-  const parts: string[] = [];
-
-  if (info.hasGitUpdates && info.gitBehindBy) {
-    parts.push(
-      `🔄 **Git Updates Available**\n` +
-        `Branch: ${info.currentBranch}\n` +
-        `Behind remote by ${info.gitBehindBy} commit${info.gitBehindBy > 1 ? "s" : ""}\n` +
-        (info.gitAheadBy && info.gitAheadBy > 0
-          ? `Ahead by ${info.gitAheadBy} commit${info.gitAheadBy > 1 ? "s" : ""} (unpushed)\n`
-          : "") +
-        `\nRun: \`git pull\` to update`
+  if (info.gitBehindBy) {
+    return (
+      `🔄 **New version available!**\n\n` +
+      `Branch: ${info.currentBranch}\n` +
+      `Behind remote by ${info.gitBehindBy} commit${info.gitBehindBy > 1 ? "s" : ""}\n` +
+      (info.gitAheadBy && info.gitAheadBy > 0
+        ? `Ahead by ${info.gitAheadBy} commit${info.gitAheadBy > 1 ? "s" : ""} (unpushed changes)\n\n`
+        : "\n") +
+      `To update:\n` +
+      `\`\`\`\ngit pull\nnpm run build\n\`\`\``
     );
   }
 
-  if (info.hasNpmUpdates && info.outdatedPackages && info.outdatedPackages.length > 0) {
-    const pkgList = info.outdatedPackages
-      .slice(0, 5) // Show max 5 packages
-      .map(
-        (p) => `• ${p.package}: ${p.current} → ${p.latest}`
-      )
-      .join("\n");
-
-    const more =
-      info.outdatedPackages.length > 5
-        ? `\n...and ${info.outdatedPackages.length - 5} more`
-        : "";
-
-    parts.push(
-      `📦 **NPM Updates Available** (${info.outdatedPackages.length})\n` +
-        pkgList +
-        more +
-        `\n\nRun: \`npm update\` to update`
-    );
-  }
-
-  return parts.join("\n\n");
+  return "✅ Bot is up to date!";
 }
 
 /**
@@ -212,8 +129,7 @@ export function formatUpdateMessage(info: UpdateInfo): string {
  */
 export async function checkAndNotify(): Promise<{ hasUpdates: boolean; message: string }> {
   const info = await checkForUpdates();
-  const hasUpdates = info.hasGitUpdates || info.hasNpmUpdates;
   const message = formatUpdateMessage(info);
 
-  return { hasUpdates, message };
+  return { hasUpdates: info.hasUpdates, message };
 }

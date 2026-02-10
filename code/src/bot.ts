@@ -437,7 +437,14 @@ Examples:
       }
     } catch (err) {
       logger.error("bot", "Error in /autostart command", { error: (err as Error).message });
-      await ctx.reply(`❌ Error: ${(err as Error).message}`);
+      const errorMsg = (err as Error).message;
+
+      // Format multiline error messages
+      if (errorMsg.includes("\n")) {
+        await ctx.reply(`❌ ${errorMsg}`);
+      } else {
+        await ctx.reply(`❌ Error: ${errorMsg}`);
+      }
     }
   });
 
@@ -453,10 +460,9 @@ Examples:
 
       await ctx.reply(message, { parse_mode: "Markdown" });
 
-      if (info.hasGitUpdates || info.hasNpmUpdates) {
+      if (info.hasUpdates) {
         logger.info("bot", "Updates found", {
-          git: info.hasGitUpdates,
-          npm: info.hasNpmUpdates,
+          behindBy: info.gitBehindBy,
         });
       }
     } catch (err) {

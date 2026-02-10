@@ -1,6 +1,5 @@
 import { createBot } from "./bot.js";
 import { logger } from "./logger.js";
-import { ensureAutostartEnabled } from "./autostart.js";
 import { checkForUpdates, formatUpdateMessage } from "./updates.js";
 import { ALLOWED_USER_ID } from "./config.js";
 
@@ -8,11 +7,6 @@ logger.info("main", "Starting Asystent bot", {
   platform: process.platform,
   nodeVersion: process.version,
   cwd: process.cwd()
-});
-
-// Ensure autostart is enabled by default (safe to call multiple times)
-ensureAutostartEnabled().catch((err) => {
-  logger.warn("main", "Failed to setup autostart", { error: err.message });
 });
 
 const bot = createBot();
@@ -39,7 +33,7 @@ bot.start({
         logger.debug("main", "Checking for updates on startup");
         const info = await checkForUpdates();
 
-        if (info.hasGitUpdates || info.hasNpmUpdates) {
+        if (info.hasUpdates) {
           const message = "🔔 **Updates Available**\n\n" + formatUpdateMessage(info);
           await bot.api.sendMessage(ALLOWED_USER_ID, message, { parse_mode: "Markdown" });
           logger.info("main", "Update notification sent to user");
