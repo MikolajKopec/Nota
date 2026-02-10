@@ -9,6 +9,59 @@ import { join, dirname } from 'path';
 import { execSync } from 'child_process';
 import * as readline from 'readline';
 
+// Auto-detect bash path
+function findBashPath(): string | null {
+  const isWindows = process.platform === 'win32';
+
+  if (isWindows) {
+    // Try to find bash using 'where' command
+    try {
+      const result = execSync('where bash', { encoding: 'utf-8' }).trim();
+      const paths = result.split('\n').map(p => p.trim()).filter(p => p);
+      if (paths.length > 0) {
+        return paths[0]; // Return first match
+      }
+    } catch (e) {
+      // 'where' failed, try common locations
+    }
+
+    // Common Windows locations for Git Bash
+    const commonPaths = [
+      'C:\\Program Files\\Git\\bin\\bash.exe',
+      'C:\\Program Files (x86)\\Git\\bin\\bash.exe',
+      'D:\\Git\\bin\\bash.exe',
+      'C:\\Git\\bin\\bash.exe',
+    ];
+
+    for (const path of commonPaths) {
+      if (existsSync(path)) {
+        return path;
+      }
+    }
+  } else {
+    // Unix-like systems - try 'which bash'
+    try {
+      const result = execSync('which bash', { encoding: 'utf-8' }).trim();
+      if (result && existsSync(result)) {
+        return result;
+      }
+    } catch (e) {
+      // 'which' failed, try common locations
+    }
+
+    // Common Unix locations
+    const commonPaths = ['/usr/bin/bash', '/bin/bash', '/usr/local/bin/bash'];
+
+    for (const path of commonPaths) {
+      if (existsSync(path)) {
+        return path;
+      }
+    }
+  }
+
+  return null;
+}
+
 // Simple inquirer-like interface using readline
 interface Question {
   name: string;
@@ -114,9 +167,11 @@ It will take approximately 5 minutes.
    ✓ Created a Telegram bot with @BotFather
    ✓ Your Telegram User ID from @userinfobot
    ✓ An Obsidian vault (can be empty)
-   ✓ Git Bash installed (Windows) or bash (Unix)
+   ✓ Git Bash installed (Windows - download from git-scm.com)
+      macOS/Linux users: bash is already installed
 
-💡 Tip: Keep this information handy to speed up the process!
+💡 Tip: The wizard will auto-detect most settings, but have your
+       Telegram bot token and user ID ready!
 
 Press Ctrl+C at any time to cancel.
 
@@ -181,36 +236,75 @@ Press Ctrl+C at any time to cancel.
     console.log('\n🧠 Step 2: Claude Code Configuration');
     console.log('─'.repeat(50));
     console.log('');
-    console.log('📋 Finding your bash executable:');
-    if (process.platform === 'win32') {
-      console.log('   Common Windows locations:');
-      console.log('   • C:\\Program Files\\Git\\bin\\bash.exe');
-      console.log('   • C:\\Program Files (x86)\\Git\\bin\\bash.exe');
-      console.log('   • D:\\Git\\bin\\bash.exe');
+    console.log('📋 Searching for bash executable...');
+
+    const detectedBashPath = findBashPath();
+
+    if (detectedBashPath) {
+      console.log(`   ✅ Found bash at: ${detectedBashPath}`);
       console.log('');
-      console.log('   To find it, run in PowerShell:');
-      console.log('   > where bash');
-      console.log('   or:');
-      console.log('   > Get-Command bash | Select-Object -ExpandProperty Source');
+
+      const useDetected = await prompt.confirm(
+        'Use this bash path?',
+        true
+      );
+
+      if (useDetected) {
+        config.claudeCodePath = detectedBashPath;
+      } else {
+        console.log('');
+        console.log('💡 Common locations:');
+        if (process.platform === 'win32') {
+          console.log('   • C:\\Program Files\\Git\\bin\\bash.exe');
+          console.log('   • C:\\Program Files (x86)\\Git\\bin\\bash.exe');
+        } else {
+          console.log('   • /usr/bin/bash');
+          console.log('   • /bin/bash');
+        }
+        console.log('');
+
+        config.claudeCodePath = await prompt.ask({
+          name: 'claudeCodePath',
+          message: 'Enter path to bash executable',
+          default: detectedBashPath,
+          required: true,
+          validate: (value) => {
+            return existsSync(value) || `Path does not exist: ${value}`;
+          },
+        });
+      }
     } else {
-      console.log('   Usually: /bin/bash or /usr/bin/bash');
-      console.log('   To verify, run: which bash');
+      console.log('   ⚠️  Could not auto-detect bash.');
+      console.log('');
+      console.log('💡 Common locations:');
+      if (process.platform === 'win32') {
+        console.log('   • C:\\Program Files\\Git\\bin\\bash.exe');
+        console.log('   • C:\\Program Files (x86)\\Git\\bin\\bash.exe');
+        console.log('');
+        console.log('   To find it, run in PowerShell:');
+        console.log('   > where bash');
+      } else {
+        console.log('   • /usr/bin/bash');
+        console.log('   • /bin/bash');
+        console.log('');
+        console.log('   To find it, run: which bash');
+      }
+      console.log('');
+
+      const defaultBashPath = process.platform === 'win32'
+        ? 'C:\\Program Files\\Git\\bin\\bash.exe'
+        : '/usr/bin/bash';
+
+      config.claudeCodePath = await prompt.ask({
+        name: 'claudeCodePath',
+        message: 'Enter path to bash executable',
+        default: defaultBashPath,
+        required: true,
+        validate: (value) => {
+          return existsSync(value) || `Path does not exist: ${value}`;
+        },
+      });
     }
-    console.log('');
-
-    const defaultBashPath = process.platform === 'win32'
-      ? 'C:\\Program Files\\Git\\bin\\bash.exe'
-      : '/usr/bin/bash';
-
-    config.claudeCodePath = await prompt.ask({
-      name: 'claudeCodePath',
-      message: 'Enter path to bash executable',
-      default: defaultBashPath,
-      required: true,
-      validate: (value) => {
-        return existsSync(value) || `Path does not exist: ${value}. Please check the path and try again.`;
-      },
-    });
 
     // Step 3: Obsidian Vault
     console.log('\n📝 Step 3: Obsidian Vault Configuration');
@@ -297,7 +391,13 @@ Press Ctrl+C at any time to cancel.
     console.log('⏰ Task Scheduler:');
     console.log('   Create reminders and scheduled tasks with natural language.');
     console.log('   Examples: "Remind me daily at 9am", "Every Monday at 4pm"');
-    console.log('   Requires: Windows Task Scheduler or cron (Unix)');
+    if (process.platform === 'win32') {
+      console.log('   Uses: Windows Task Scheduler (schtasks)');
+    } else if (process.platform === 'darwin') {
+      console.log('   Uses: macOS launchd (.plist files)');
+    } else {
+      console.log('   Uses: Manual cron setup (Linux - not yet automated)');
+    }
     console.log('');
 
     config.optionalFeatures.scheduler = await prompt.confirm(
@@ -506,7 +606,7 @@ ${config.optionalFeatures.whisper ? `
 ` : ''}${config.optionalFeatures.scheduler ? `
 ⚠️  Task Scheduler Enabled:
    Bot can create scheduled tasks/reminders.
-   Uses ${process.platform === 'win32' ? 'Windows Task Scheduler' : 'cron'}.
+   Uses ${process.platform === 'win32' ? 'Windows Task Scheduler (schtasks)' : process.platform === 'darwin' ? 'macOS launchd' : 'manual cron (not automated)'}.
 ` : ''}${config.optionalFeatures.screenshots ? `
 ✅ Screenshots Enabled:
    Bot can capture and analyze websites.

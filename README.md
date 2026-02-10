@@ -138,17 +138,29 @@ Next session picks up where you left off - no repeated explanations needed.
 
 ## 🎬 Quick Start
 
+### Platform Support
+
+Nota is **cross-platform** and supports:
+- ✅ **Windows 10/11** - Full support (Task Scheduler + PowerShell)
+- ✅ **macOS** - Full support (launchd + Bash)
+- ⚠️ **Linux** - Partial support (scheduler requires manual cron setup)
+
+All core features (notes, search, voice, screenshots) work identically across platforms.
+
 ### Prerequisites
 - **Node.js** 18+ and npm/yarn/bun
 - **Telegram Bot Token** (from [@BotFather](https://t.me/BotFather))
 - **Obsidian** vault (can be empty to start)
 - **Claude Code CLI** installed ([anthropics/claude-code](https://github.com/anthropics/claude-code))
-- **Git Bash** (Windows only) or bash (macOS/Linux)
+- **Bash**:
+  - **Windows**: Install [Git for Windows](https://git-scm.com/download/win) (includes Git Bash)
+  - **macOS/Linux**: Pre-installed ✅
 
 ### Optional Prerequisites
 - **Whisper WebUI** (for voice transcription) - [repo link](https://github.com/jhj0517/Whispering-WebUI)
 - **Chrome/Edge** (for screenshots)
-- **Task Scheduler** (Windows) or cron (Unix) for scheduled tasks
+- **Task Scheduler** (Windows) or **launchd** (macOS) for scheduled tasks
+  - Linux: Manual cron setup (not yet automated)
 
 ---
 
@@ -176,25 +188,14 @@ Before running the setup wizard, gather the following information:
 3. The bot will reply with your user ID (a numeric value like `123456789`)
 4. **Save this ID** - only this user will be able to use your bot
 
-#### 3️⃣ **Locate Git Bash Path** (Windows only)
+#### 3️⃣ **Git Bash / Bash** (Auto-detected)
 
-The bot needs Git Bash to run certain commands. Find your installation:
+The bot needs bash to run certain commands.
 
-**Common locations:**
-```bash
-C:\Program Files\Git\bin\bash.exe
-C:\Program Files (x86)\Git\bin\bash.exe
-```
+**Windows:** Install [Git for Windows](https://git-scm.com/download/win) if you don't have it
+**macOS/Linux:** bash is pre-installed
 
-**To verify:**
-```bash
-# In PowerShell or CMD
-where bash
-# or
-Get-Command bash | Select-Object -ExpandProperty Source
-```
-
-**macOS/Linux:** Just use `/bin/bash`
+💡 The setup wizard will **automatically find** your bash installation - you don't need to locate it manually!
 
 #### 4️⃣ **Prepare Obsidian Vault Paths**
 
@@ -244,7 +245,7 @@ The wizard will ask you for:
 
 ✅ **Telegram Bot Token** - From BotFather (see checklist above)
 ✅ **Your Telegram User ID** - From @userinfobot (see checklist above)
-✅ **Git Bash Path** - Location of bash.exe (see checklist above)
+✅ **Bash Path** - Auto-detected (you can confirm or change)
 ✅ **Obsidian Vault Path** - Your main notes vault
 ✅ **Brain Vault Path** (optional) - Separate vault for bot memory
 ✅ **Whisper URL** (optional) - If using voice transcription
@@ -491,10 +492,12 @@ Remind me daily at 9am to review my goals
 - **puppeteer**: Web automation
 - **memory**: Conversation context
 
-**4. Task Scheduler (`code/.claude/skills/scheduler/`)**
+**4. Task Scheduler (`code/.claude/skills/scheduler/`)** - Cross-platform
 - Natural language parsing for schedules
-- Windows Task Scheduler / cron integration
-- Intelligent triggers via `trigger-bot-prompt.ps1`
+- **Windows**: Task Scheduler (schtasks) + `trigger-bot-prompt.ps1`
+- **macOS**: launchd (.plist files) + `trigger-bot-prompt.sh`
+- **Linux**: Not yet automated (use cron manually)
+- Intelligent triggers with full MCP access
 - Metadata tracking in brain vault
 
 For detailed technical documentation, see [ARCHITECTURE.md](ARCHITECTURE.md).
@@ -533,7 +536,8 @@ nota/                                # Project root
     │   └── trigger.ts               # Scheduled task entry point
     └── scripts/
         ├── screenshot.cjs           # Puppeteer screenshot utility
-        └── trigger-bot-prompt.ps1   # Scheduled task runner
+        ├── trigger-bot-prompt.ps1   # Scheduled task runner (Windows)
+        └── trigger-bot-prompt.sh    # Scheduled task runner (macOS/Linux)
 ```
 
 ### Running Locally
@@ -600,9 +604,19 @@ See [LOGGING.md](LOGGING.md) for details.
 - Check `npx` is available: `npx --version`
 
 **Scheduled tasks not firing:**
-- Windows: Check Task Scheduler event viewer
-- Verify `CLAUDE_CODE_GIT_BASH_PATH` is correct
-- Check task metadata in brain vault: `Asystent/scheduled-tasks.md`
+- **Windows**:
+  - Check Task Scheduler: `schtasks /query /tn "TaskName" /v /fo list`
+  - Event Viewer: Task Scheduler → Operational (Event IDs: 100=start, 102=success, 103/201=fail)
+  - Run manually to test: `schtasks /run /tn "TaskName"`
+- **macOS**:
+  - Check if loaded: `launchctl list | grep com.asystent`
+  - View plist: `cat ~/Library/LaunchAgents/com.asystent.TaskName.plist`
+  - Check logs: `log show --predicate 'process == "trigger-bot-prompt.sh"' --last 1h`
+  - Load manually: `launchctl load ~/Library/LaunchAgents/com.asystent.TaskName.plist`
+- **Both platforms**:
+  - Verify `CLAUDE_CODE_GIT_BASH_PATH` in `.env` is correct
+  - Check task metadata in brain vault: `Asystent/scheduled-tasks.md`
+  - Review bot logs: `tail -f bot.log` (Unix) or `Get-Content bot.log -Wait` (PowerShell)
 
 **Screenshots fail:**
 - Ensure Chrome/Edge is installed
