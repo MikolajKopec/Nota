@@ -12,9 +12,9 @@
 
 ---
 
-## 💡 Why Asystent?
+## 💡 Why Nota?
 
-Asystent leverages your **Claude Code CLI subscription** ($20/month flat rate) instead of pay-per-token API. This means **unlimited conversations** without counting tokens or worrying about usage costs.
+Nota leverages your **Claude Code CLI subscription** ($20/month flat rate) instead of pay-per-token API. This means **unlimited conversations** without counting tokens or worrying about usage costs.
 
 **Perfect for:**
 - 🧑‍💻 **Claude Code Users** - Already subscribed? Get a personal bot at no extra cost
@@ -109,7 +109,7 @@ Next session picks up where you left off - no repeated explanations needed.
 
 *API costs: Input $3/M tokens, Output $15/M tokens, Cache read $0.30/M tokens*
 
-### 🎯 Asystent Makes Sense If:
+### 🎯 Nota Makes Sense If:
 
 ✅ **You already have Claude Code** - Bot is "free" since you're paying $20/mo anyway
 ✅ **Heavy usage** - 200+ messages/day (breakeven at ~150 msgs/day)
@@ -155,8 +155,8 @@ Next session picks up where you left off - no repeated explanations needed.
 **Option 1: Interactive Setup (Recommended)**
 
 ```bash
-git clone https://github.com/yourusername/asystent.git
-cd asystent
+git clone https://github.com/MikolajKopec/Nota.git
+cd Nota
 npm install
 npx tsx setup.ts  # Run the setup wizard
 ```
@@ -170,8 +170,8 @@ The wizard will guide you through:
 **Option 2: Manual Setup**
 
 ```bash
-git clone https://github.com/yourusername/asystent.git
-cd asystent/code
+git clone https://github.com/MikolajKopec/Nota.git
+cd Nota/code
 npm install
 
 # Copy and configure environment variables
@@ -462,7 +462,7 @@ Enable verbose logging:
 LOG_LEVEL=0
 
 # View live logs
-cd asystent
+cd Nota
 tail -f bot.log  # Unix
 Get-Content bot.log -Wait -Tail 20  # PowerShell
 ```
@@ -511,9 +511,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/asystent/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/asystent/discussions)
-- **Documentation**: [Wiki](https://github.com/yourusername/asystent/wiki)
+- **Issues**: [GitHub Issues](https://github.com/MikolajKopec/Nota/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/MikolajKopec/Nota/discussions)
+- **Documentation**: [Wiki](https://github.com/MikolajKopec/Nota/wiki)
 
 ---
 
