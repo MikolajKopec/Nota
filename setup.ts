@@ -30,6 +30,23 @@ function checkNodeVersion(): { ok: boolean; version: string } {
   };
 }
 
+// Get common user directories
+function getCommonDirectories(): { name: string; path: string }[] {
+  const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+
+  if (!homeDir) return [];
+
+  const commonDirs = [
+    { name: 'Desktop', path: join(homeDir, 'Desktop') },
+    { name: 'Downloads', path: join(homeDir, 'Downloads') },
+    { name: 'Documents', path: join(homeDir, 'Documents') },
+    { name: 'Pictures', path: join(homeDir, 'Pictures') },
+  ];
+
+  // Return only directories that actually exist
+  return commonDirs.filter(dir => existsSync(dir.path));
+}
+
 // Auto-detect bash path
 function findBashPath(): string | null {
   const isWindows = process.platform === 'win32';
@@ -738,21 +755,70 @@ async function main() {
     console.log('   ⚠️  Security: Only add directories you trust the bot to access.');
     console.log('   💡 Tip: You can leave this empty and add directories later.');
     console.log('');
-    console.log('   Format: Comma-separated paths');
-    console.log('   Example: C:\\Users\\YourName\\Desktop,C:\\Users\\YourName\\Documents');
-    console.log('');
 
-    const filesystemPaths = await prompt.ask({
-      name: 'filesystemPaths',
-      message: 'Directories to allow access (or leave empty to skip)',
-      default: '',
-    });
+    const enableFilesystem = await prompt.confirm('Enable filesystem access?', false);
 
-    if (filesystemPaths) {
-      config.mcpServers.filesystem = filesystemPaths
-        .split(',')
-        .map((p) => p.trim())
-        .filter((p) => p);
+    if (enableFilesystem) {
+      const commonDirs = getCommonDirectories();
+
+      if (commonDirs.length > 0) {
+        console.log('');
+        console.log('📁 Common directories found:');
+        commonDirs.forEach((dir, i) => {
+          console.log(`   ${i + 1}. ${dir.name} - ${dir.path}`);
+        });
+        console.log('');
+
+        const selection = await prompt.ask({
+          name: 'commonDirs',
+          message: 'Select directories (comma-separated numbers, e.g., "1,2,3" or leave empty for none)',
+          default: '',
+        });
+
+        if (selection) {
+          const indices = selection
+            .split(',')
+            .map(s => parseInt(s.trim()) - 1)
+            .filter(i => i >= 0 && i < commonDirs.length);
+
+          config.mcpServers.filesystem = indices.map(i => commonDirs[i].path);
+        }
+      }
+
+      // Allow adding custom paths
+      console.log('');
+      const addCustom = await prompt.confirm('Add custom directories?', false);
+
+      if (addCustom) {
+        console.log('');
+        console.log('📝 Enter custom paths (comma-separated):');
+        console.log('   Example: C:\\Users\\YourName\\Projects,D:\\Work');
+        console.log('');
+
+        const customPaths = await prompt.ask({
+          name: 'customPaths',
+          message: 'Custom directories (or leave empty)',
+          default: '',
+        });
+
+        if (customPaths) {
+          const paths = customPaths
+            .split(',')
+            .map((p) => p.trim())
+            .filter((p) => p);
+
+          config.mcpServers.filesystem.push(...paths);
+        }
+      }
+
+      // Show summary
+      if (config.mcpServers.filesystem.length > 0) {
+        console.log('');
+        console.log('✅ Filesystem access enabled for:');
+        config.mcpServers.filesystem.forEach(path => {
+          console.log(`   • ${path}`);
+        });
+      }
     }
 
     // Step 6: Log Level
