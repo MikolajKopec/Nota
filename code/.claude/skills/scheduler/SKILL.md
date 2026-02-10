@@ -5,7 +5,12 @@ description: "Manage Windows scheduled tasks for bot reminders/notifications. Us
 
 # Scheduler Skill
 
-Manage Windows scheduled tasks that trigger intelligent bot responses using `trigger-bot-prompt.ps1`.
+Manage scheduled tasks that trigger intelligent bot responses (cross-platform: Windows, macOS).
+
+**Platform detection:** Scripts automatically detect the OS and use appropriate tools:
+- **Windows:** Task Scheduler (schtasks) + PowerShell trigger script
+- **macOS:** launchd (.plist files) + Bash trigger script
+- **Linux:** Not yet supported (use cron manually)
 
 ## Core Workflow
 
@@ -158,18 +163,26 @@ When the user asks:
 → Action: History
 → Run get_task_history.py for the task
 
-## Date Format Requirements
+## Platform-Specific Details
 
-**Critical:** Polish Windows requires DD/MM/YYYY format for schtasks.
+### Windows
+- Uses **Task Scheduler** (schtasks.exe)
+- Trigger script: `trigger-bot-prompt.ps1` (PowerShell)
+- Date format: **DD/MM/YYYY** (Polish Windows)
+- Tasks stored in Windows Task Scheduler
 
-The `create_task.py` script handles this automatically using Python's datetime:
+### macOS
+- Uses **launchd** (Apple's scheduler)
+- Trigger script: `trigger-bot-prompt.sh` (Bash)
+- Plist files stored in: `~/Library/LaunchAgents/com.asystent.*.plist`
+- Enable/disable = load/unload with launchctl
 
-```python
-date_str = target.strftime('%d/%m/%Y')  # DD/MM/YYYY
-time_str = target.strftime('%H:%M')    # 24-hour format
-```
+### Date Format
+The `create_task.py` script handles platform-specific date formatting automatically:
+- Windows: DD/MM/YYYY for schtasks
+- macOS: ISO format for launchd plist
 
-**Never** manually format dates in bash or use system locale commands - always use the Python script.
+**Never** manually format dates - always use the Python script.
 
 ## Task Naming Convention
 

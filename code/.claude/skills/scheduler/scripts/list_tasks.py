@@ -1,93 +1,130 @@
 #!/usr/bin/env python3
 """
-List all scheduled tasks created by Asystent bot.
+List scheduled tasks created by Asystent bot (cross-platform).
 
 Usage:
-    python list_tasks.py [--prefix Asystent_]
+    python list_tasks.py [--prefix PREFIX] [--json]
 """
 
 import argparse
 import subprocess
 import sys
+import platform
 import json
+from pathlib import Path
+
+PLATFORM = platform.system()
 
 
-def list_tasks(prefix=''):
-    """List all scheduled tasks, optionally filtered by prefix."""
-
-    # Query all tasks
-    cmd = 'powershell -Command "schtasks /query /fo CSV /v"'
+def list_windows_tasks(prefix=None):
+    """List Windows Task Scheduler tasks."""
+    cmd = 'powershell -Command "schtasks /query /fo CSV | ConvertFrom-Csv"'
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 
     if result.returncode != 0:
-        print(f"ERROR: {result.stderr}", file=sys.stderr)
-        sys.exit(1)
-
-    # Parse CSV output
-    lines = result.stdout.strip().split('\n')
-    if len(lines) < 2:
         return []
 
-    # First line is headers
-    headers = lines[0].split('","')
-    headers[0] = headers[0].lstrip('"')
-    headers[-1] = headers[-1].rstrip('"')
-
     tasks = []
-    for line in lines[1:]:
+    lines = result.stdout.strip().split('\n')
+
+    for line in lines[1:]:  # Skip header
         if not line.strip():
             continue
 
-        values = line.split('","')
-        values[0] = values[0].lstrip('"')
-        values[-1] = values[-1].rstrip('"')
+        # Parse CSV-like output
+        parts = line.split(',')
+        if len(parts) >= 3:
+            task_name = parts[0].strip('"').split('\\')[-1]  # Get name without path
 
-        task_dict = dict(zip(headers, values))
+            # Filter by trigger-bot-prompt or prefix
+            if prefix and not task_name.startswith(prefix):
+                continue
 
-        # Filter by prefix and by trigger script path
-        task_name = task_dict.get('TaskName', '').strip('\\')
+            # Check if it's an Asystent task (contains trigger-bot-prompt in command)
+            detail_cmd = f'schtasks /query /tn "{parts[0].strip("\"")}" /fo LIST /v'
+            detail_result = subprocess.run(
+                f'powershell -Command "{detail_cmd}"',
+                shell=True,
+                capture_output=True,
+                text=True
+            )
 
-        # Check if it's an Asystent task (either by prefix or by trigger-bot-prompt.ps1 in Task To Run)
-        task_to_run = task_dict.get('Task To Run', '')
-        is_asystent_task = (
-            (prefix and task_name.startswith(prefix)) or
-            'trigger-bot-prompt.ps1' in task_to_run
+            if 'trigger-bot-prompt' in detail_result.stdout:
+                tasks.append({
+                    'name': task_name,
+                    'status': parts[2].strip('"'),
+                    'next_run': parts[1].strip('"') if len(parts) > 1 else 'N/A'
+                })
+
+    return tasks
+
+
+def list_macos_tasks(prefix=None):
+    """List macOS launchd tasks."""
+    # Get list of plist files in LaunchAgents
+    launch_agents_dir = Path.home() / "Library" / "LaunchAgents"
+
+    if not launch_agents_dir.exists():
+        return []
+
+    tasks = []
+
+    for plist_file in launch_agents_dir.glob("com.asystent.*.plist"):
+        task_name = plist_file.stem.replace("com.asystent.", "")
+
+        if prefix and not task_name.startswith(prefix):
+            continue
+
+        # Check if task is loaded
+        result = subprocess.run(
+            ['launchctl', 'list'],
+            capture_output=True,
+            text=True
         )
 
-        if is_asystent_task:
-            tasks.append({
-                'name': task_name,
-                'status': task_dict.get('Status', ''),
-                'next_run': task_dict.get('Next Run Time', ''),
-                'last_run': task_dict.get('Last Run Time', ''),
-                'schedule': task_dict.get('Schedule', ''),
-                'task_to_run': task_to_run
-            })
+        label = f"com.asystent.{task_name}"
+        is_loaded = label in result.stdout
+
+        tasks.append({
+            'name': task_name,
+            'status': 'Loaded' if is_loaded else 'Not loaded',
+            'plist': str(plist_file)
+        })
 
     return tasks
 
 
 def main():
     parser = argparse.ArgumentParser(description='List Asystent scheduled tasks')
-    parser.add_argument('--prefix', default='', help='Filter tasks by name prefix')
+    parser.add_argument('--prefix', help='Filter tasks by name prefix')
     parser.add_argument('--json', action='store_true', help='Output as JSON')
 
     args = parser.parse_args()
 
-    tasks = list_tasks(args.prefix)
+    # Get tasks based on platform
+    if PLATFORM == 'Windows':
+        tasks = list_windows_tasks(args.prefix)
+    elif PLATFORM == 'Darwin':
+        tasks = list_macos_tasks(args.prefix)
+    else:
+        print("ERROR: Linux not yet supported", file=sys.stderr)
+        sys.exit(1)
 
     if args.json:
         print(json.dumps(tasks, indent=2))
     else:
         if not tasks:
-            print("No scheduled tasks found.")
+            print("No Asystent tasks found")
         else:
+            print(f"\nFound {len(tasks)} task(s):\n")
             for task in tasks:
-                print(f"\nTask: {task['name']}")
-                print(f"  Status: {task['status']}")
-                print(f"  Next Run: {task['next_run']}")
-                print(f"  Last Run: {task['last_run']}")
-                print(f"  Schedule: {task['schedule']}")
+                print(f"  • {task['name']}")
+                print(f"    Status: {task['status']}")
+                if 'next_run' in task:
+                    print(f"    Next run: {task['next_run']}")
+                if 'plist' in task:
+                    print(f"    Plist: {task['plist']}")
+                print()
 
 
 if __name__ == '__main__':

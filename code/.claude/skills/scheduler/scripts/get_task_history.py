@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Get execution history for a Windows scheduled task from Event Viewer.
+Get execution history for a scheduled task (cross-platform).
 
 Usage:
     python get_task_history.py --name "TaskName" [--limit 10]
@@ -9,11 +9,14 @@ Usage:
 import argparse
 import subprocess
 import sys
+import platform
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
+
+PLATFORM = platform.system()
 
 
-def get_task_history(task_name, limit=10):
+def get_windows_history(task_name, limit=10):
     """
     Get task execution history from Windows Event Viewer.
 
@@ -24,7 +27,6 @@ def get_task_history(task_name, limit=10):
     - 201: Task execution failed
     """
 
-    # PowerShell command to query Task Scheduler event log
     ps_cmd = f"""
     Get-WinEvent -FilterHashtable @{{
         LogName='Microsoft-Windows-TaskScheduler/Operational';
@@ -38,7 +40,6 @@ def get_task_history(task_name, limit=10):
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
-        # No events found or error
         return []
 
     try:
@@ -50,7 +51,6 @@ def get_task_history(task_name, limit=10):
         for event in events:
             event_id = event['Id']
             time_created = event['TimeCreated']
-            message = event['Message']
 
             # Determine status
             if event_id == 100:
@@ -67,13 +67,76 @@ def get_task_history(task_name, limit=10):
             history.append({
                 'time': time_created,
                 'status': status,
-                'event_id': event_id,
-                'message': message[:200]  # First 200 chars
+                'event_id': event_id
             })
 
         return history
 
     except json.JSONDecodeError:
+        return []
+
+
+def get_macos_history(task_name, limit=10):
+    """
+    Get task execution history from macOS system log.
+    """
+    label = f"com.asystent.{task_name}"
+
+    # Query logs from last 7 days
+    since = (datetime.now() - timedelta(days=7)).isoformat()
+
+    # Use 'log show' to query system logs
+    cmd = [
+        'log', 'show',
+        '--predicate', f'process == "launchd" AND eventMessage CONTAINS "{label}"',
+        '--style', 'json',
+        '--start', since,
+        '--last', str(limit * 2)  # Get more than needed, filter later
+    ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        return []
+
+    history = []
+
+    try:
+        # Parse JSON output
+        for line in result.stdout.splitlines():
+            if not line.strip():
+                continue
+            try:
+                event = json.loads(line)
+                message = event.get('eventMessage', '')
+
+                # Filter for relevant events
+                if label in message:
+                    timestamp = event.get('timestamp', '')
+
+                    # Determine status from message
+                    if 'start' in message.lower():
+                        status = 'Started'
+                    elif 'exited' in message.lower():
+                        if 'code 0' in message or 'successfully' in message.lower():
+                            status = 'Completed'
+                        else:
+                            status = 'Failed'
+                    else:
+                        status = 'Info'
+
+                    history.append({
+                        'time': timestamp,
+                        'status': status,
+                        'message': message[:200]
+                    })
+
+            except json.JSONDecodeError:
+                continue
+
+        return history[:limit]
+
+    except Exception:
         return []
 
 
@@ -85,7 +148,13 @@ def main():
 
     args = parser.parse_args()
 
-    history = get_task_history(args.name, args.limit)
+    if PLATFORM == 'Windows':
+        history = get_windows_history(args.name, args.limit)
+    elif PLATFORM == 'Darwin':
+        history = get_macos_history(args.name, args.limit)
+    else:
+        print("ERROR: Linux not yet supported", file=sys.stderr)
+        sys.exit(1)
 
     if args.json:
         print(json.dumps(history, indent=2))
