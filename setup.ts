@@ -9,6 +9,26 @@ import { join, dirname } from 'path';
 import { execSync } from 'child_process';
 import * as readline from 'readline';
 
+// Check if Claude Code CLI is installed
+function checkClaudeCLI(): boolean {
+  try {
+    execSync('claude --version', { stdio: 'pipe', encoding: 'utf-8' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Check Node.js version
+function checkNodeVersion(): { ok: boolean; version: string } {
+  const version = process.version;
+  const major = parseInt(version.slice(1).split('.')[0]);
+  return {
+    ok: major >= 18,
+    version,
+  };
+}
+
 // Auto-detect bash path
 function findBashPath(): string | null {
   const isWindows = process.platform === 'win32';
@@ -159,23 +179,52 @@ async function main() {
 ║   with Obsidian Integration                               ║
 ║                                                           ║
 ╚═══════════════════════════════════════════════════════════╝
-
-This wizard will guide you through setting up your Nota bot.
-It will take approximately 5 minutes.
-
-📋 Before you start, make sure you have:
-   ✓ Created a Telegram bot with @BotFather
-   ✓ Your Telegram User ID from @userinfobot
-   ✓ An Obsidian vault (can be empty)
-   ✓ Git Bash installed (Windows - download from git-scm.com)
-      macOS/Linux users: bash is already installed
-
-💡 Tip: The wizard will auto-detect most settings, but have your
-       Telegram bot token and user ID ready!
-
-Press Ctrl+C at any time to cancel.
-
 `);
+
+  // Check dependencies first
+  console.log('🔍 Checking dependencies...\n');
+
+  // Check Node.js
+  const nodeCheck = checkNodeVersion();
+  if (nodeCheck.ok) {
+    console.log(`✅ Node.js ${nodeCheck.version}`);
+  } else {
+    console.log(`❌ Node.js ${nodeCheck.version} - version 18+ required`);
+    console.log('\n📥 Install Node.js 18+:');
+    console.log('   Visit: https://nodejs.org/\n');
+    process.exit(1);
+  }
+
+  // Check Claude Code CLI
+  if (checkClaudeCLI()) {
+    try {
+      const version = execSync('claude --version', { encoding: 'utf-8', stdio: 'pipe' }).trim();
+      console.log(`✅ Claude Code CLI (${version})`);
+    } catch {
+      console.log('✅ Claude Code CLI installed');
+    }
+  } else {
+    console.log('❌ Claude Code CLI not found!\n');
+    console.log('📥 Install Claude Code CLI:');
+    console.log('   npm install -g @anthropic-ai/claude-code');
+    console.log('   or visit: https://docs.anthropic.com/claude/docs/claude-code\n');
+    process.exit(1);
+  }
+
+  console.log('\n✅ All dependencies met!\n');
+  console.log('─'.repeat(60));
+  console.log('\nThis wizard will guide you through setting up your Nota bot.');
+  console.log('It will take approximately 5 minutes.\n');
+  console.log('📋 Before you start, make sure you have:');
+  console.log('   ✓ Created a Telegram bot with @BotFather');
+  console.log('   ✓ Your Telegram User ID from @userinfobot');
+  console.log('   ✓ An Obsidian vault (can be empty)');
+  console.log('   ✓ Git Bash installed (Windows - download from git-scm.com)');
+  console.log('      macOS/Linux users: bash is already installed\n');
+  console.log('💡 Tip: The wizard will auto-detect most settings, but have your');
+  console.log('       Telegram bot token and user ID ready!\n');
+  console.log('Press Ctrl+C at any time to cancel.\n');
+  console.log('─'.repeat(60));
 
   const prompt = new Prompt();
   const config: Config = {
@@ -480,8 +529,8 @@ ${config.whisperUrl ? `# Whisper Configuration\nWHISPER_URL=${config.whisperUrl}
 LOG_LEVEL=${config.logLevel}  # ${['DEBUG', 'INFO', 'WARN', 'ERROR'][parseInt(config.logLevel)]}
 `;
 
-    writeFileSync('.env', envContent);
-    console.log('   ✅ Created .env (project root)');
+    writeFileSync(join('code', '.env'), envContent);
+    console.log('   ✅ Created code/.env');
 
     // Generate .mcp.json
     const mcpConfig: any = {
@@ -570,6 +619,35 @@ LOG_LEVEL=${config.logLevel}  # ${['DEBUG', 'INFO', 'WARN', 'ERROR'][parseInt(co
       console.log('   $ npm install');
     }
 
+    // Create run scripts
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('📝 Creating run scripts...');
+    console.log('');
+
+    // Windows batch script
+    const runBatContent = `@echo off
+echo Starting Nota bot...
+cd /d "%~dp0code"
+npm run dev
+pause
+`;
+    writeFileSync('run.bat', runBatContent);
+    console.log('   ✅ Created run.bat (Windows)');
+
+    // Unix shell script
+    const runShContent = `#!/bin/bash
+echo "Starting Nota bot..."
+cd "$(dirname "$0")/code"
+npm run dev
+`;
+    writeFileSync('run.sh', runShContent);
+    try {
+      execSync('chmod +x run.sh', { stdio: 'pipe' });
+    } catch {
+      // chmod may fail on Windows, that's OK
+    }
+    console.log('   ✅ Created run.sh (macOS/Linux)');
+
     // Success message
     console.log(`
 ╔═══════════════════════════════════════╗
@@ -577,7 +655,7 @@ LOG_LEVEL=${config.logLevel}  # ${['DEBUG', 'INFO', 'WARN', 'ERROR'][parseInt(co
 ╚═══════════════════════════════════════╝
 
 Configuration files created:
-  📄 .env (in project root)
+  📄 code/.env
   📄 code/.mcp.json
   📦 Dependencies installed
 
@@ -586,8 +664,8 @@ Configuration files created:
 🚀 Next Steps:
 
   1. Start the bot:
-     ${process.platform === 'win32' ? '> ' : '$ '}cd code
-     ${process.platform === 'win32' ? '> ' : '$ '}npm run dev
+     ${process.platform === 'win32' ? 'Windows: Double-click run.bat' : 'macOS/Linux: ./run.sh'}
+     ${process.platform === 'win32' ? 'Or in terminal: > ' : 'Or: $ '}cd code && npm run dev
 
   2. Open Telegram and find your bot (search for the username you created)
 
@@ -621,6 +699,26 @@ ${config.optionalFeatures.whisper ? `
 
 Enjoy your personal AI assistant! 🤖
 `);
+
+    // Ask if user wants to start bot now
+    console.log('');
+    const startNow = await prompt.confirm('Would you like to start the bot now?', true);
+
+    prompt.close();
+
+    if (startNow) {
+      console.log('\n🚀 Starting bot...\n');
+      console.log('Press Ctrl+C to stop the bot at any time.\n');
+      console.log('─'.repeat(60));
+      console.log('');
+      try {
+        execSync('npm run dev', { cwd: 'code', stdio: 'inherit' });
+      } catch (error) {
+        // User pressed Ctrl+C or bot crashed
+        console.log('\n\n👋 Bot stopped. Run again with:');
+        console.log(process.platform === 'win32' ? '   run.bat' : '   ./run.sh');
+      }
+    }
   } catch (error) {
     console.log('\n');
     console.log('╔═══════════════════════════════════════════════════════════╗');
