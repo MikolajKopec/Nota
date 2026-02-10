@@ -102,7 +102,7 @@ async function findNewScreenshots(sinceMs: number): Promise<string[]> {
         results.push(fullPath);
       }
     }
-    logger.debug("bot", `Found ${results.length} new screenshots since ${new Date(sinceMs).toISOString()}`);
+    // Screenshot fallback found
     return results;
   } catch (err) {
     logger.error("bot", "Failed to scan screenshot directory", { error: (err as Error).message });
@@ -116,16 +116,11 @@ async function handleResponse(ctx: MyContext, userMessage: string): Promise<void
   const startTime = Date.now();
   const toolsUsed: string[] = [];
 
-  logger.info("bot", "Processing message", {
-    userId: ctx.from?.id,
-    messageLength: userMessage.length,
-    preview: userMessage.slice(0, 50)
-  });
+  logger.info("bot", "Processing message");
 
   const result = await askClaudeStream(userMessage, {
     onToolUse: (toolName: string) => {
       toolsUsed.push(toolName);
-      logger.info("bot", "Tool called", { tool: toolName });
     },
   });
 
@@ -137,11 +132,9 @@ async function handleResponse(ctx: MyContext, userMessage: string): Promise<void
   const text = result.text;
   const duration = Date.now() - startTime;
 
-  logger.info("bot", "Received response from Claude", {
-    length: text.length,
-    hasIMG: text.includes("[IMG:"),
-    durationMs: duration,
-    toolsUsed: toolsUsed.length > 0 ? toolsUsed : "none",
+  logger.info("bot", "Response received", {
+    chars: text.length,
+    tools: toolsUsed.length,
     usage: result.usage
   });
 
@@ -154,14 +147,12 @@ async function handleResponse(ctx: MyContext, userMessage: string): Promise<void
     // Fallback: send any screenshots created during this interaction
     const newScreenshots = await findNewScreenshots(startTime);
     if (newScreenshots.length > 0) {
-      logger.info("bot", "Sending fallback screenshots", { count: newScreenshots.length });
       for (const imgPath of newScreenshots) {
         try {
           const buffer = await readFile(imgPath);
-          logger.debug("bot", "Sending fallback screenshot", { path: imgPath, size: buffer.length });
           await ctx.replyWithPhoto(new InputFile(buffer, "screenshot.png"));
         } catch (err) {
-          logger.error("bot", "Failed to send fallback screenshot", { path: imgPath, error: (err as Error).message });
+          logger.error("bot", "Failed to send screenshot", { error: (err as Error).message });
         }
         unlink(imgPath).catch(() => {});
       }
@@ -187,19 +178,14 @@ async function sendResponseWithImages(ctx: MyContext, text: string): Promise<voi
     await sendLongMessage(ctx, cleanText);
   }
 
-  logger.info("bot", "Sending response with images", { imageCount: paths.length });
-
   // Send images
   for (const imgPath of paths) {
     try {
-      logger.debug("bot", "Reading image file", { path: imgPath });
       const buffer = await readFile(imgPath);
-      logger.debug("bot", "Sending image", { path: imgPath, size: buffer.length });
       await ctx.replyWithPhoto(new InputFile(buffer, "screenshot.png"));
-      logger.info("bot", "Image sent successfully", { path: imgPath });
       unlink(imgPath).catch(() => {});
     } catch (err) {
-      logger.error("bot", "Failed to send image", { path: imgPath, error: (err as Error).message });
+      logger.error("bot", "Failed to send image", { error: (err as Error).message });
       await ctx.reply(`\u26a0\ufe0f Failed to send image: ${imgPath}`);
     }
   }

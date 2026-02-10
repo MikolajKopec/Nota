@@ -195,24 +195,12 @@ function spawnClaudeStream(args: string[], userMessage: string, callbacks: Strea
       try {
         const parsed = JSON.parse(line);
 
-        // Log raw event for debugging (only when LOG_LEVEL=0)
-        if (process.env.LOG_LEVEL === "0") {
-          logger.debug("claude", "Raw stream event", {
-            type: parsed.type,
-            event: parsed.event ? JSON.stringify(parsed.event).slice(0, 500) : undefined
-          });
-        }
-
         // stream-json wraps events: {"type":"stream_event","event":{...}}
         // But it can also emit {"type":"assistant","message":{...}} at the end
         if (parsed.type === "stream_event" && parsed.event) {
           const evt = parsed.event;
 
           if (evt.type === "message_start") {
-            logger.info("claude", "Message started", {
-              model: evt.message?.model,
-              role: evt.message?.role
-            });
             if (evt.message?.usage) {
               const u = evt.message.usage;
               usage = {
@@ -221,34 +209,18 @@ function spawnClaudeStream(args: string[], userMessage: string, callbacks: Strea
                 cache_creation_input_tokens: u.cache_creation_input_tokens,
                 cache_read_input_tokens: u.cache_read_input_tokens,
               };
-              logger.debug("claude", "Initial usage", { usage });
             }
           } else if (evt.type === "content_block_start" && evt.content_block) {
             if (evt.content_block.type === "tool_use") {
               const toolName = evt.content_block.name || "unknown";
-              const toolId = evt.content_block.id;
-              logger.info("claude", "Tool use started", {
-                tool: toolName,
-                id: toolId
-              });
+              logger.info("claude", "Tool call", { tool: toolName });
               callbacks.onToolUse?.(toolName);
-            } else if (evt.content_block.type === "text") {
-              logger.debug("claude", "Text block started");
             }
           } else if (evt.type === "content_block_delta" && evt.delta) {
             if (evt.delta.type === "text_delta" && evt.delta.text) {
               fullText += evt.delta.text;
               callbacks.onText?.(evt.delta.text);
-            } else if (evt.delta.type === "input_json_delta" && evt.delta.partial_json) {
-              // Tool input being streamed
-              logger.debug("claude", "Tool input delta", {
-                partial: evt.delta.partial_json.slice(0, 100)
-              });
             }
-          } else if (evt.type === "content_block_stop") {
-            logger.debug("claude", "Content block stopped", {
-              index: evt.index
-            });
           } else if (evt.type === "message_delta" && evt.usage) {
             usage = {
               input_tokens: evt.usage.input_tokens ?? 0,
@@ -256,13 +228,9 @@ function spawnClaudeStream(args: string[], userMessage: string, callbacks: Strea
               cache_creation_input_tokens: evt.usage.cache_creation_input_tokens,
               cache_read_input_tokens: evt.usage.cache_read_input_tokens,
             };
-            logger.debug("claude", "Usage updated", { usage });
-          } else if (evt.type === "message_stop") {
-            logger.info("claude", "Message stopped");
           }
         } else if (parsed.type === "result") {
           // Final result message from claude CLI stream-json
-          logger.debug("claude", "Received result event");
           if (parsed.result) {
             fullText = parsed.result;
           }
@@ -274,40 +242,9 @@ function spawnClaudeStream(args: string[], userMessage: string, callbacks: Strea
               cache_read_input_tokens: parsed.usage.cache_read_input_tokens,
             };
           }
-        } else if (parsed.type === "assistant" && parsed.message) {
-          // Sometimes get full message with tool_use content
-          logger.debug("claude", "Received assistant message");
-          if (parsed.message.content && Array.isArray(parsed.message.content)) {
-            for (const block of parsed.message.content) {
-              if (block.type === "tool_use") {
-                logger.info("claude", "Tool use in message", {
-                  tool: block.name,
-                  id: block.id,
-                  input: JSON.stringify(block.input).slice(0, 300)
-                });
-              }
-            }
-          }
-        } else if (parsed.type === "user" && parsed.message) {
-          // User message with tool results
-          logger.debug("claude", "Received user message");
-          if (parsed.message.content && Array.isArray(parsed.message.content)) {
-            for (const block of parsed.message.content) {
-              if (block.type === "tool_result") {
-                logger.info("claude", "Tool result in message", {
-                  tool_use_id: block.tool_use_id,
-                  content: typeof block.content === "string"
-                    ? block.content.slice(0, 300)
-                    : JSON.stringify(block.content).slice(0, 300),
-                  is_error: block.is_error
-                });
-              }
-            }
-          }
         }
       } catch (err) {
-        // Not valid JSON or parsing error
-        logger.debug("claude", "Failed to parse line", { error: (err as Error).message });
+        // Not valid JSON or parsing error - silently ignore
       }
     }
 
@@ -325,23 +262,14 @@ function spawnClaudeStream(args: string[], userMessage: string, callbacks: Strea
       const text = chunk.toString();
       stderr += text;
 
-      // Parse stderr for tool call information
+      // Only log errors from stderr
       const lines = text.split("\n");
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed) continue;
 
-        // Tool call patterns from claude CLI verbose output
-        if (trimmed.includes("Calling tool:") || trimmed.includes("Tool:")) {
-          logger.info("claude", "Tool call detected", { line: trimmed });
-        } else if (trimmed.includes("Tool result:") || trimmed.includes("Result:")) {
-          logger.info("claude", "Tool result", { line: trimmed.slice(0, 200) });
-        } else if (trimmed.includes("Error:") || trimmed.includes("ERROR")) {
+        if (trimmed.includes("Error:") || trimmed.includes("ERROR")) {
           logger.error("claude", "stderr error", { message: trimmed });
-        } else if (trimmed.startsWith("mcp__") || trimmed.includes("mcp__")) {
-          logger.info("claude", "MCP tool mention", { line: trimmed });
-        } else {
-          logger.debug("claude", "stderr", { message: trimmed });
         }
       }
     });
