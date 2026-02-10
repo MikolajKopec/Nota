@@ -117,9 +117,7 @@ export function formatUpdateMessage(info: UpdateInfo): string {
       `Behind remote by ${info.gitBehindBy} commit${info.gitBehindBy > 1 ? "s" : ""}\n` +
       (info.gitAheadBy && info.gitAheadBy > 0
         ? `Ahead by ${info.gitAheadBy} commit${info.gitAheadBy > 1 ? "s" : ""} (unpushed changes)\n\n`
-        : "\n") +
-      `To update:\n` +
-      `\`\`\`\ngit pull\nnpm run build\n\`\`\``
+        : "\n")
     );
   }
 
