@@ -5,9 +5,10 @@
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, tmpdir } from 'path';
 import { execSync } from 'child_process';
 import * as readline from 'readline';
+import ora from 'ora';
 
 // Check if Claude Code CLI is installed
 function checkClaudeCLI(): boolean {
@@ -80,6 +81,215 @@ function findBashPath(): string | null {
   }
 
   return null;
+}
+
+// Auto-install Claude CLI if not present
+async function ensureClaudeCLI(): Promise<boolean> {
+  const spinner = ora('Checking Claude Code CLI...').start();
+
+  if (checkClaudeCLI()) {
+    spinner.succeed('Claude Code CLI is installed');
+    return true;
+  }
+
+  spinner.text = 'Claude Code CLI not found. Installing...';
+
+  try {
+    const isWindows = process.platform === 'win32';
+
+    if (isWindows) {
+      // Windows: use npm global install
+      execSync('npm install -g @anthropic-ai/claude-code', {
+        stdio: 'pipe',
+        encoding: 'utf-8'
+      });
+    } else {
+      // macOS/Linux: use curl installer
+      execSync('curl -fsSL https://claude.ai/install.sh | sh', {
+        stdio: 'pipe',
+        encoding: 'utf-8',
+        shell: '/bin/bash'
+      });
+    }
+
+    // Verify installation
+    if (checkClaudeCLI()) {
+      spinner.succeed('Claude Code CLI installed successfully');
+      return true;
+    } else {
+      spinner.fail('Installation completed but CLI not found in PATH');
+      console.log('\n⚠️  Please restart your terminal and run the wizard again.');
+      return false;
+    }
+  } catch (error) {
+    spinner.fail('Failed to install Claude Code CLI automatically');
+    console.log('\n❌ Error:', (error as Error).message);
+    console.log('\n📖 Please install manually:');
+    console.log('   Visit: https://docs.anthropic.com/claude/docs/install-cli');
+    return false;
+  }
+}
+
+// Verify Telegram bot token via API call
+async function verifyTelegramToken(token: string): Promise<{ valid: boolean; botName?: string; username?: string }> {
+  const spinner = ora('Verifying Telegram token...').start();
+
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+    const data = await response.json();
+
+    if (data.ok) {
+      spinner.succeed(`Token valid! Bot: @${data.result.username} (${data.result.first_name})`);
+      return {
+        valid: true,
+        botName: data.result.first_name,
+        username: data.result.username
+      };
+    } else {
+      spinner.fail('Invalid token');
+      return { valid: false };
+    }
+  } catch (error) {
+    spinner.fail('Failed to verify token');
+    console.log('❌ Error:', (error as Error).message);
+    return { valid: false };
+  }
+}
+
+// Interactive Telegram bot creation guide
+async function createTelegramBot(prompt: Prompt): Promise<string | null> {
+  console.log('\n🤖 Let\'s create a new Telegram bot!\n');
+  console.log('Follow these steps:');
+  console.log('1. Open Telegram and search for @BotFather');
+  console.log('2. Send /newbot to BotFather');
+  console.log('3. Follow the prompts to choose a name and username');
+  console.log('4. BotFather will give you a token (looks like: 123456:ABC-DEF...)\n');
+
+  const openNow = await prompt.confirm('Open Telegram web to @BotFather now?', true);
+
+  if (openNow) {
+    try {
+      const open = (await import('open')).default;
+      await open('https://t.me/BotFather');
+      console.log('✅ Opened Telegram in browser\n');
+    } catch (error) {
+      console.log('⚠️  Could not open browser automatically. Please open Telegram manually.\n');
+    }
+  }
+
+  const hasToken = await prompt.confirm('Have you created a bot and received the token?', false);
+
+  if (!hasToken) {
+    console.log('\n⏸️  No problem! Come back when you have the token.');
+    return null;
+  }
+
+  // Ask for token with validation
+  let token: string | null = null;
+  let attempts = 0;
+
+  while (!token && attempts < 3) {
+    const input = await prompt.ask({
+      name: 'token',
+      message: 'Paste your bot token',
+      required: true,
+      validate: (value: string) => {
+        if (!value.match(/^\d+:[A-Za-z0-9_-]+$/)) {
+          return 'Invalid token format. Should be like: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz';
+        }
+        return true;
+      }
+    });
+
+    const verification = await verifyTelegramToken(input);
+
+    if (verification.valid) {
+      token = input;
+      console.log(`\n✅ Bot created successfully: @${verification.username}`);
+    } else {
+      attempts++;
+      if (attempts < 3) {
+        console.log(`\n❌ Token verification failed. ${3 - attempts} attempts remaining.\n`);
+      }
+    }
+  }
+
+  return token;
+}
+
+// Auto-get user ID by polling Telegram API
+async function autoGetUserId(token: string): Promise<string | null> {
+  console.log('\n👤 Getting your Telegram User ID...\n');
+  console.log('📱 Please open Telegram and send any message to your bot');
+  console.log('   (You can say "hello" or anything else)\n');
+
+  const spinner = ora('Waiting for your message...').start();
+  const startTime = Date.now();
+  const timeout = 60000; // 60 seconds
+
+  while (Date.now() - startTime < timeout) {
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${token}/getUpdates`);
+      const data = await response.json();
+
+      if (data.ok && data.result.length > 0) {
+        // Get the most recent message
+        const lastUpdate = data.result[data.result.length - 1];
+        const userId = lastUpdate.message?.from?.id || lastUpdate.callback_query?.from?.id;
+
+        if (userId) {
+          spinner.succeed(`Got your User ID: ${userId}`);
+
+          // Clear the update so bot doesn't process it later
+          await fetch(`https://api.telegram.org/bot${token}/getUpdates?offset=${lastUpdate.update_id + 1}`);
+
+          return userId.toString();
+        }
+      }
+    } catch (error) {
+      // Continue polling
+    }
+
+    // Wait 2 seconds before next poll
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+
+  spinner.fail('Timeout waiting for message');
+  console.log('\n⏱️  No message received within 60 seconds.');
+  return null;
+}
+
+// Post-install verification - send test message
+async function verifyBot(token: string, userId: string): Promise<boolean> {
+  const spinner = ora('Verifying bot can send messages...').start();
+
+  try {
+    const testMessage = '✅ Nota bot is working! Setup completed successfully.';
+
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: userId,
+        text: testMessage
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.ok) {
+      spinner.succeed('Bot verification successful! Check your Telegram.');
+      return true;
+    } else {
+      spinner.fail('Failed to send test message');
+      console.log('❌ Error:', data.description);
+      return false;
+    }
+  } catch (error) {
+    spinner.fail('Failed to verify bot');
+    console.log('❌ Error:', (error as Error).message);
+    return false;
+  }
 }
 
 // Simple inquirer-like interface using readline
@@ -195,19 +405,9 @@ async function main() {
     process.exit(1);
   }
 
-  // Check Claude Code CLI
-  if (checkClaudeCLI()) {
-    try {
-      const version = execSync('claude --version', { encoding: 'utf-8', stdio: 'pipe' }).trim();
-      console.log(`✅ Claude Code CLI (${version})`);
-    } catch {
-      console.log('✅ Claude Code CLI installed');
-    }
-  } else {
-    console.log('❌ Claude Code CLI not found!\n');
-    console.log('📥 Install Claude Code CLI:');
-    console.log('   npm install -g @anthropic-ai/claude-code');
-    console.log('   or visit: https://docs.anthropic.com/claude/docs/claude-code\n');
+  // Check and auto-install Claude Code CLI
+  const claudeInstalled = await ensureClaudeCLI();
+  if (!claudeInstalled) {
     process.exit(1);
   }
 
@@ -215,14 +415,17 @@ async function main() {
   console.log('─'.repeat(60));
   console.log('\nThis wizard will guide you through setting up your Nota bot.');
   console.log('It will take approximately 5 minutes.\n');
+  console.log('✨ What this wizard will do:');
+  console.log('   • Help you create a Telegram bot (or use existing one)');
+  console.log('   • Automatically detect your User ID');
+  console.log('   • Configure Obsidian vault integration');
+  console.log('   • Set up optional features (Whisper, screenshots, etc.)');
+  console.log('   • Verify everything works with a test message\n');
   console.log('📋 Before you start, make sure you have:');
-  console.log('   ✓ Created a Telegram bot with @BotFather');
-  console.log('   ✓ Your Telegram User ID from @userinfobot');
   console.log('   ✓ An Obsidian vault (can be empty)');
   console.log('   ✓ Git Bash installed (Windows - download from git-scm.com)');
   console.log('      macOS/Linux users: bash is already installed\n');
-  console.log('💡 Tip: The wizard will auto-detect most settings, but have your');
-  console.log('       Telegram bot token and user ID ready!\n');
+  console.log('💡 Tip: The wizard will help you create a bot if you don\'t have one!\n');
   console.log('Press Ctrl+C at any time to cancel.\n');
   console.log('─'.repeat(60));
 
@@ -248,38 +451,96 @@ async function main() {
     console.log('\n📱 Step 1: Telegram Bot Configuration');
     console.log('─'.repeat(50));
     console.log('');
-    console.log('📋 How to get your Bot Token:');
-    console.log('   1. Open Telegram and search for @BotFather');
-    console.log('   2. Send /newbot command');
-    console.log('   3. Follow prompts to create your bot');
-    console.log('   4. Copy the token (format: 123456789:ABCdefGHI...)');
-    console.log('');
 
-    config.telegramBotToken = await prompt.ask({
-      name: 'telegramBotToken',
-      message: 'Enter your Telegram Bot Token',
-      required: true,
-      validate: (value) => {
-        const tokenRegex = /^\d+:[A-Za-z0-9_-]+$/;
-        return tokenRegex.test(value) || 'Invalid bot token format (should be: 123456789:ABC-DEF...)';
-      },
-    });
+    const hasExistingBot = await prompt.confirm('Do you already have a Telegram bot token?', false);
+
+    if (hasExistingBot) {
+      console.log('');
+      console.log('📋 Bot Token format: 123456789:ABCdefGHI...');
+      console.log('');
+
+      let tokenValid = false;
+      let attempts = 0;
+
+      while (!tokenValid && attempts < 3) {
+        const token = await prompt.ask({
+          name: 'telegramBotToken',
+          message: 'Enter your Telegram Bot Token',
+          required: true,
+          validate: (value) => {
+            const tokenRegex = /^\d+:[A-Za-z0-9_-]+$/;
+            return tokenRegex.test(value) || 'Invalid bot token format (should be: 123456789:ABC-DEF...)';
+          },
+        });
+
+        const verification = await verifyTelegramToken(token);
+
+        if (verification.valid) {
+          config.telegramBotToken = token;
+          tokenValid = true;
+        } else {
+          attempts++;
+          if (attempts < 3) {
+            console.log(`\n❌ Token verification failed. ${3 - attempts} attempts remaining.\n`);
+          } else {
+            console.log('\n❌ Token verification failed 3 times. Exiting.');
+            process.exit(1);
+          }
+        }
+      }
+    } else {
+      const newToken = await createTelegramBot(prompt);
+
+      if (!newToken) {
+        console.log('\n❌ Could not obtain bot token. Exiting.');
+        process.exit(1);
+      }
+
+      config.telegramBotToken = newToken;
+    }
 
     console.log('');
-    console.log('📋 How to get your User ID:');
-    console.log('   1. In Telegram, search for @userinfobot');
-    console.log('   2. Start a chat or send any message');
-    console.log('   3. Copy your numeric User ID');
-    console.log('');
+    const autoGetId = await prompt.confirm('Automatically detect your Telegram User ID?', true);
 
-    config.allowedUserId = await prompt.ask({
-      name: 'allowedUserId',
-      message: 'Enter your Telegram User ID',
-      required: true,
-      validate: (value) => {
-        return /^\d+$/.test(value) || 'User ID must be numeric (e.g., 123456789)';
-      },
-    });
+    if (autoGetId) {
+      const detectedId = await autoGetUserId(config.telegramBotToken);
+
+      if (detectedId) {
+        config.allowedUserId = detectedId;
+      } else {
+        console.log('\n⚠️  Auto-detection failed. Please enter manually.\n');
+        console.log('📋 How to get your User ID:');
+        console.log('   1. In Telegram, search for @userinfobot');
+        console.log('   2. Start a chat or send any message');
+        console.log('   3. Copy your numeric User ID');
+        console.log('');
+
+        config.allowedUserId = await prompt.ask({
+          name: 'allowedUserId',
+          message: 'Enter your Telegram User ID',
+          required: true,
+          validate: (value) => {
+            return /^\d+$/.test(value) || 'User ID must be numeric (e.g., 123456789)';
+          },
+        });
+      }
+    } else {
+      console.log('');
+      console.log('📋 How to get your User ID:');
+      console.log('   1. In Telegram, search for @userinfobot');
+      console.log('   2. Start a chat or send any message');
+      console.log('   3. Copy your numeric User ID');
+      console.log('');
+
+      config.allowedUserId = await prompt.ask({
+        name: 'allowedUserId',
+        message: 'Enter your Telegram User ID',
+        required: true,
+        validate: (value) => {
+          return /^\d+$/.test(value) || 'User ID must be numeric (e.g., 123456789)';
+        },
+      });
+    }
 
     // Step 2: Claude Code Path
     console.log('\n🧠 Step 2: Claude Code Configuration');
@@ -699,6 +960,22 @@ ${config.optionalFeatures.whisper ? `
 
 Enjoy your personal AI assistant! 🤖
 `);
+
+    // Verify bot can send messages
+    console.log('');
+    console.log('🧪 Step 7: Verifying Bot Setup');
+    console.log('─'.repeat(50));
+    console.log('');
+
+    const botWorks = await verifyBot(config.telegramBotToken, config.allowedUserId);
+
+    if (botWorks) {
+      console.log('\n✅ Bot verification successful!');
+      console.log('   Check your Telegram - you should have received a test message.');
+    } else {
+      console.log('\n⚠️  Bot verification failed, but setup is complete.');
+      console.log('   You can try starting the bot manually to troubleshoot.');
+    }
 
     // Ask if user wants to start bot now
     console.log('');

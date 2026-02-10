@@ -1,0 +1,6 @@
+{
+  "devDependencies": {
+    "open": "^11.0.0",
+    "ora": "^9.3.0"
+  }
+}
