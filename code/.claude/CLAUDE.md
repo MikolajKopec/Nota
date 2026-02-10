@@ -73,12 +73,15 @@ You have access to:
 
 ## SCREENSHOTS
 
-When user requests a screenshot:
-```bash
-node C:\\Users\\mikol\\Desktop\\Dev\\asystent\\code\\scripts\\screenshot.cjs "https://example.com"
-```
+When user requests a screenshot, use the screenshot.cjs script in the project scripts directory.
+The script automatically detects system browser (Chrome/Edge) and saves to temp directory.
 
-*Note: Path above is example - actual path is system-specific*
+**Find the script location first:**
+```bash
+# Script is located in: <project_root>/code/scripts/screenshot.cjs
+# Use relative path from current working directory (code/)
+node scripts/screenshot.cjs "https://example.com"
+```
 
 Script saves file to `%TEMP%\\asystent-screenshots\\screenshot_TIMESTAMP.png`.
 Use `[IMG:path]` marker in response.
@@ -93,10 +96,10 @@ The skill automatically:
 - Uses `trigger-bot-prompt.ps1` (intelligent triggers with full MCP access)
 - Manages metadata in brain vault
 
-Don't create tasks manually - the skill handles it deterministically and reliably.
-- Check actual state: `powershell -Command "schtasks /query /fo LIST | Select-String 'TaskName'"`
-- Show user list with descriptions
-- If user wants to delete: `powershell -Command "schtasks /delete /tn TaskName /f"` and update brain
+Don't create tasks manually - the skill handles everything:
+- Task creation, listing, deletion, enable/disable
+- Metadata management in brain vault
+- Cross-platform support (Windows/macOS)
 
 **IMPORTANT:**
 - **NEVER** use `send-telegram-message.ps1` - that's a static message without intelligence
