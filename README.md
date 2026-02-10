@@ -150,6 +150,86 @@ Next session picks up where you left off - no repeated explanations needed.
 - **Chrome/Edge** (for screenshots)
 - **Task Scheduler** (Windows) or cron (Unix) for scheduled tasks
 
+---
+
+### 📋 Pre-Installation Checklist
+
+Before running the setup wizard, gather the following information:
+
+#### 1️⃣ **Create Your Telegram Bot**
+
+1. Open Telegram and search for [@BotFather](https://t.me/BotFather)
+2. Send `/newbot` command
+3. Follow the prompts:
+   - **Bot name**: Your bot's display name (e.g., "My Personal Assistant")
+   - **Bot username**: Must end in "bot" (e.g., "my_assistant_bot")
+4. **Save the token** - BotFather will send you a token like:
+   ```
+   123456789:ABCdefGHIjklMNOpqrsTUVwxyz
+   ```
+   ⚠️ Keep this token secret! Anyone with it can control your bot.
+
+#### 2️⃣ **Get Your Telegram User ID**
+
+1. In Telegram, search for [@userinfobot](https://t.me/userinfobot)
+2. Start a chat or send any message
+3. The bot will reply with your user ID (a numeric value like `123456789`)
+4. **Save this ID** - only this user will be able to use your bot
+
+#### 3️⃣ **Locate Git Bash Path** (Windows only)
+
+The bot needs Git Bash to run certain commands. Find your installation:
+
+**Common locations:**
+```bash
+C:\Program Files\Git\bin\bash.exe
+C:\Program Files (x86)\Git\bin\bash.exe
+```
+
+**To verify:**
+```bash
+# In PowerShell or CMD
+where bash
+# or
+Get-Command bash | Select-Object -ExpandProperty Source
+```
+
+**macOS/Linux:** Just use `/bin/bash`
+
+#### 4️⃣ **Prepare Obsidian Vault Paths**
+
+You need two Obsidian vaults:
+
+**User Vault (Required):**
+- This is your main notes vault
+- Can be a new empty vault or existing one
+- Example: `C:\Users\YourName\Documents\Obsidian\MyVault`
+
+**Brain Vault (Recommended):**
+- Separate vault for bot's persistent memory
+- Recommended to keep bot memory separate from your notes
+- Can create a new vault called "Claude Brain" or similar
+- Example: `C:\Users\YourName\Documents\Obsidian\ClaudeBrain`
+
+**To create a new vault in Obsidian:**
+1. Open Obsidian
+2. Click "Open another vault" → "Create new vault"
+3. Name it and choose location
+4. Copy the full path
+
+#### 5️⃣ **Whisper WebUI (Optional - for voice messages)**
+
+If you want voice transcription:
+
+1. Clone the repo: [Whisper WebUI](https://github.com/jhj0517/Whispering-WebUI)
+2. Follow installation instructions in their README
+3. Start the server (usually runs on `http://localhost:7860`)
+4. Keep it running while using voice messages
+
+**Skip this if:** You don't plan to send voice messages to the bot.
+
+---
+
 ### Installation
 
 **Option 1: Interactive Setup (Recommended)**
@@ -157,26 +237,42 @@ Next session picks up where you left off - no repeated explanations needed.
 ```bash
 git clone https://github.com/MikolajKopec/Nota.git
 cd Nota
-npm install
 npx tsx setup.ts  # Run the setup wizard
 ```
 
-The wizard will guide you through:
-- Telegram bot configuration
-- Obsidian vault paths
-- Optional features (voice, scheduler, screenshots)
-- MCP server setup
+The wizard will ask you for:
+
+✅ **Telegram Bot Token** - From BotFather (see checklist above)
+✅ **Your Telegram User ID** - From @userinfobot (see checklist above)
+✅ **Git Bash Path** - Location of bash.exe (see checklist above)
+✅ **Obsidian Vault Path** - Your main notes vault
+✅ **Brain Vault Path** (optional) - Separate vault for bot memory
+✅ **Whisper URL** (optional) - If using voice transcription
+✅ **Optional Features** - Enable/disable voice, scheduler, screenshots
+
+The wizard will then:
+- Generate `.env` file with your configuration
+- Generate `.mcp.json` with MCP server configuration
+- Install dependencies automatically in `code/` directory
+- Verify your setup
+
+💡 **Tip:** Have the [Pre-Installation Checklist](#-pre-installation-checklist) information ready before running the wizard!
+
+---
 
 **Option 2: Manual Setup**
 
 ```bash
 git clone https://github.com/MikolajKopec/Nota.git
-cd Nota/code
-npm install
+cd Nota
 
 # Copy and configure environment variables
-cp ../.env.example .env
+cp .env.example .env
 # Edit .env with your configuration
+
+# Navigate to code directory and install dependencies
+cd code
+npm install
 
 # Copy and configure MCP servers
 cp .mcp.json.example .mcp.json
@@ -186,38 +282,86 @@ cp .mcp.json.example .mcp.json
 npm run dev
 ```
 
-### First Steps
+### ✅ After Setup
 
-1. **Start the bot**: `cd code && npm run dev`
+Once the setup wizard completes (or manual setup is done):
+
+1. **Navigate to the code directory:**
+   ```bash
+   cd code
+   ```
+
+2. **Start the bot:**
+   ```bash
+   npm run dev
+   ```
+
+   You should see:
+   ```
+   🤖 Bot started successfully!
+   📝 Listening for messages...
+   ```
+
+3. **Open Telegram** and search for your bot (the username you created with BotFather)
+
+4. **Test authentication:** Send `/start` to your bot
+   - ✅ If authorized: You'll get a welcome message
+   - ❌ If unauthorized: Check that `ALLOWED_USER_ID` in `.env` matches your Telegram ID
+
+5. **Try basic commands:**
+   ```
+   /help              - See all available commands
+   /notatka Test      - Create your first note
+   /szukaj test       - Search for the note you just created
+   ```
+
+6. **Stop the bot:** Press `Ctrl+C` in the terminal
+
+💡 **Next:** Check out the [Usage](#-usage) section for more commands and features!
+
+---
+
+### First Steps After Installation
+
+Quick reference for getting started:
+
+1. **Start the bot**: From the project root, run `cd code && npm run dev`
 2. **Open Telegram** and find your bot
 3. **Send a message**: Try `/start` to verify authentication
 4. **Create a note**: `/notatka Your first note content`
 5. **Search**: `/szukaj keyword`
+6. **View logs**: `Get-Content bot.log -Wait -Tail 20` (PowerShell) or `tail -f bot.log` (Unix)
 
 ---
 
 ## ⚙️ Configuration
 
-### Environment Variables (`.env`)
+### Environment Variables
+
+The setup wizard automatically creates `.env` in the **project root directory** (same level as `README.md`).
+
+If you're configuring manually, create `.env` with:
 
 ```bash
 # Required
-TELEGRAM_BOT_TOKEN=123456:ABC-DEF1234ghIkl...  # From @BotFather
-ALLOWED_USER_ID=123456789                      # Your Telegram user ID
-CLAUDE_CODE_GIT_BASH_PATH=/path/to/bash       # Git bash path
+TELEGRAM_BOT_TOKEN=123456:ABC-DEF1234ghIkl...  # From @BotFather (see Pre-Installation Checklist)
+ALLOWED_USER_ID=123456789                      # Your Telegram user ID (see Pre-Installation Checklist)
+CLAUDE_CODE_GIT_BASH_PATH=/path/to/bash       # Git bash path (see Pre-Installation Checklist)
 
 # Optional
 WHISPER_URL=http://localhost:7860              # Whisper WebUI endpoint
 LOG_LEVEL=1                                    # 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR
 ```
 
-**How to get your Telegram User ID:**
-1. Message [@userinfobot](https://t.me/userinfobot) on Telegram
-2. Copy the numeric ID from the response
+💡 See [Pre-Installation Checklist](#-pre-installation-checklist) for how to get these values.
 
-### MCP Configuration (`.mcp.json`)
+### MCP Configuration
 
-Model Context Protocol servers provide the bot with access to external tools and data sources. See [.mcp.json.example](code/.mcp.json.example) for the full template.
+The setup wizard automatically creates `.mcp.json` in the `code/` directory based on your vault paths.
+
+If you're configuring manually, create `.mcp.json` in `code/` directory (see `code/.mcp.json.example` for the full template).
+
+Model Context Protocol servers provide the bot with access to external tools and data sources.
 
 **Required Servers:**
 - **user-notes**: Your main Obsidian vault
@@ -362,19 +506,22 @@ For detailed technical documentation, see [ARCHITECTURE.md](ARCHITECTURE.md).
 ### Project Structure
 
 ```
-asystent/
+nota/                                # Project root
 ├── README.md                        # This file
 ├── ARCHITECTURE.md                  # Detailed technical docs
 ├── LICENSE                          # MIT License
 ├── setup.ts                         # Interactive setup wizard
 ├── .env.example                     # Environment template
+├── .env                             # Your environment config (create from .env.example)
 ├── bot.log                          # Runtime logs
 ├── sessions.json                    # Session history
 └── code/                            # Main codebase
+    ├── package.json                 # Node.js dependencies
+    ├── tsconfig.json                # TypeScript configuration
     ├── .claude/                     # Claude configuration
     │   ├── CLAUDE.md                # System prompt for subprocess
     │   └── skills/scheduler/        # Scheduler skill
-    ├── .mcp.json                    # MCP configuration (gitignored)
+    ├── .mcp.json                    # MCP configuration (create from .mcp.json.example)
     ├── .mcp.json.example            # MCP template
     ├── src/
     │   ├── index.ts                 # Entry point
@@ -393,16 +540,16 @@ asystent/
 
 ```bash
 # Development mode (with hot reload)
-cd code
+cd code        # Navigate to code directory if not already there
 npm run dev
 
 # Production build
 npm run build
 npm start
 
-# View logs
-tail -f ../bot.log  # Unix
-Get-Content ..\bot.log -Wait -Tail 20  # Windows PowerShell
+# View logs (from project root)
+tail -f bot.log  # Unix
+Get-Content bot.log -Wait -Tail 20  # Windows PowerShell
 ```
 
 ### Logging
@@ -430,10 +577,18 @@ See [LOGGING.md](LOGGING.md) for details.
 
 ### Common Issues
 
+**Setup wizard fails:**
+- Ensure you have Node.js 18+ installed: `node --version`
+- Check that you have network access (wizard downloads dependencies)
+- On Windows, run as administrator if you get permission errors
+- If `npx tsx setup.ts` fails, try: `npm install -g tsx` then `tsx setup.ts`
+
 **Bot doesn't respond:**
 - Check `bot.log` for errors
-- Verify Telegram bot token in `.env`
+- Verify Telegram bot token in `.env` matches the one from BotFather
 - Ensure your user ID matches `ALLOWED_USER_ID`
+- Try sending `/start` to initialize the bot
+- Restart the bot: Stop with `Ctrl+C`, then `npm run dev` again
 
 **Voice transcription fails:**
 - Verify Whisper WebUI is running: `http://localhost:7860`
@@ -458,11 +613,10 @@ See [LOGGING.md](LOGGING.md) for details.
 Enable verbose logging:
 
 ```bash
-# In .env
+# In .env (located in project root)
 LOG_LEVEL=0
 
-# View live logs
-cd Nota
+# View live logs (from project root)
 tail -f bot.log  # Unix
 Get-Content bot.log -Wait -Tail 20  # PowerShell
 ```
