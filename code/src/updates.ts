@@ -198,7 +198,14 @@ export async function applyUpdates(): Promise<{ success: boolean; message: strin
       };
     }
 
-    // Step 2: Build
+    // Step 2: Install dependencies (in case new ones were added)
+    logger.debug("updates", "Running npm install");
+    const { stdout: installOutput } = await execAsync("npm install", {
+      cwd: process.cwd(),
+    });
+    logger.debug("updates", "npm install output", { stdout: installOutput });
+
+    // Step 3: Build
     logger.debug("updates", "Running npm run build");
     const { stdout: buildOutput } = await execAsync("npm run build", {
       cwd: process.cwd(),
