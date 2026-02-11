@@ -1,32 +1,13 @@
 ---
 name: todoist
 description: Manage Todoist tasks. Use when the user mentions "todoist", "my tasks", "task list", "add a task", "complete task", or wants to interact with their Todoist account.
-homepage: https://github.com/LuoAndOrder/todoist-rs
-metadata: {"clawdbot":{"emoji":"✅","requires":{"bins":["td"]},"install":[{"id":"brew","kind":"brew","formula":"LuoAndOrder/tap/todoist-cli","bins":["td"],"label":"Install todoist-cli via Homebrew"}]}}
 ---
 
 # Todoist Integration
 
-Manage tasks via `td` CLI (todoist-rs).
+Manage tasks via `td` CLI (@doist/todoist-cli, installed as npm dependency).
 
-## Installation
-
-```bash
-brew install LuoAndOrder/tap/todoist-cli
-```
-
-Or install via Cargo: `cargo install todoist-cli-rs`
-
-## Sync Behavior
-
-- **Writes auto-sync**: `add`, `done`, `edit`, `delete` hit the API directly
-- **Reads use cache**: `list`, `today`, `show` read from local cache
-- **Sync when needed**: Use `--sync` flag or `td sync` for fresh data
-
-```bash
-td sync              # Incremental sync (fast)
-td sync --full       # Full rebuild if cache seems off
-```
+**IMPORTANT:** Always use `npx td` (not bare `td`) — the CLI is a local npm dependency.
 
 ## Common Operations
 
@@ -34,139 +15,158 @@ td sync --full       # Full rebuild if cache seems off
 
 ```bash
 # Today's agenda (includes overdue)
-td today --sync
+npx td today
 
-# Today only (no overdue)
-td today --no-overdue
+# Upcoming 7 days
+npx td upcoming
 
 # All tasks
-td list --sync
+npx td task list
 
 # By project
-td list -p "Inbox" --sync
-td list -p "Work" --sync
+npx td task list --project "Work"
 
-# High priority
-td list -f "p1 | p2" --sync
+# By priority
+npx td task list --priority p1
 
 # By label
-td list -l "urgent" --sync
+npx td task list --label "urgent"
 
-# Complex filters
-td list -f "today & p1" --sync
-td list -f "(today | overdue) & !@waiting_on" --sync
+# By due date
+npx td task list --due today
+
+# Raw Todoist filter query
+npx td task list --filter "p1 & (today | overdue)"
+
+# Inbox only
+npx td inbox
 ```
 
 ### Add Tasks
 
-Quick add (natural language):
+Quick add (natural language — handles dates, projects, priorities, labels):
 ```bash
-td quick "Buy milk tomorrow @errands #Personal"
-td quick "Review PR tomorrow" --note "Check the auth changes carefully"
+npx td add "Buy milk tomorrow p1 #Shopping"
+npx td add "Review PR #Work @urgent"
+npx td add "Call mom next Monday"
 ```
 
 Structured add:
 ```bash
-td add "Task content" \
-  -p "Inbox" \
-  -P 2 \
-  -d "today" \
-  -l "urgent"
-
-# With description
-td add "Prepare quarterly report" -P 1 -d "friday" \
-  --description "Include sales metrics and customer feedback summary"
+npx td task add --content "Prepare quarterly report" \
+  --project "Work" \
+  --priority p1 \
+  --due "friday" \
+  --description "Include sales metrics and customer feedback summary" \
+  --labels "urgent,reports"
 ```
 
-Options:
-- `-P, --priority` - 1 (highest) to 4 (lowest, default)
-- `-p, --project` - project name
-- `-d, --due` - due date ("today", "tomorrow", "2026-01-30", "next monday")
-- `-l, --label` - label (repeat for multiple)
-- `--description` - task description/notes (shown below task title)
-- `--section` - target section within project
-- `--parent` - parent task ID (creates subtask)
+Options for `task add`:
+- `--content` - task title (required)
+- `--project` - project name or id:xxx
+- `--priority` - p1 (highest) to p4 (lowest)
+- `--due` - due date (natural language or YYYY-MM-DD)
+- `--deadline` - hard deadline (YYYY-MM-DD)
+- `--labels` - comma-separated labels
+- `--description` - task notes
+- `--section` - section ID
+- `--parent` - parent task ref (creates subtask)
+- `--duration` - estimated duration (30m, 1h, 2h15m)
+- `--assignee` - assign to user (name, email, id:xxx, or "me")
 
 ### Complete Tasks
 
 ```bash
-td done <task-id>
-td done <id1> <id2> <id3>              # Multiple at once
-td done <id> --all-occurrences         # End recurring task permanently
+npx td task complete <ref>
+npx td task complete <ref> --forever    # End recurring task permanently
 ```
 
-### Modify Tasks
+### Update Tasks
 
 ```bash
-td edit <task-id> -c "New content"
-td edit <task-id> --description "Additional notes here"
-td edit <task-id> -P 1
-td edit <task-id> -d "tomorrow"
-td edit <task-id> --add-label "urgent"
-td edit <task-id> --remove-label "next"
-td edit <task-id> --no-due             # Remove due date
-td edit <task-id> --section "Next Actions"
-td edit <task-id> -p "Work"            # Move to different project
+npx td task update <ref> --content "New title"
+npx td task update <ref> --due "tomorrow"
+npx td task update <ref> --priority p1
+npx td task update <ref> --labels "urgent,work"
+npx td task update <ref> --description "Updated notes"
 ```
 
-Edit options:
-- `-c, --content` - update task title
-- `--description` - update task description/notes
-- `-P, --priority` - change priority (1-4)
-- `-d, --due` - change due date
-- `--no-due` - remove due date
-- `-l, --label` - replace all labels
-- `--add-label` - add a label
-- `--remove-label` - remove a label
-- `-p, --project` - move to different project
-- `--section` - move to section within project
-
-### Show Task Details
+### View Task Details
 
 ```bash
-td show <task-id>
-td show <task-id> --comments
+npx td task view <ref>
 ```
 
 ### Delete Tasks
 
 ```bash
-td delete <task-id>
+npx td task delete <ref>
 ```
 
 ### Reopen Completed Tasks
 
 ```bash
-td reopen <task-id>
+npx td task uncomplete <ref>
 ```
 
-## Project & Label Management
+### Move Tasks
+
+```bash
+npx td task move <ref> --project "Work"
+npx td task move <ref> --section <id>
+npx td task move <ref> --parent <ref>
+```
+
+## Projects & Labels
 
 ```bash
 # Projects
-td projects                            # List all
-td projects add "New Project"
-td projects show <id>
+npx td project list
+npx td project create --name "New Project"
+npx td project view <ref>
+npx td project delete <ref>
 
 # Labels
-td labels                              # List all
-td labels add "urgent"
+npx td label list
+npx td label create --name "urgent"
+npx td label delete <name>
 ```
+
+## Other Commands
+
+```bash
+npx td completed                 # Show completed tasks
+npx td stats                     # Productivity stats & karma
+npx td activity                  # Activity log
+npx td reminder list             # List reminders
+npx td auth status               # Check auth status
+```
+
+## Output Flags
+
+Use on any read command for machine-readable output:
+- `--json` - JSON output (essential fields)
+- `--ndjson` - newline-delimited JSON
+- `--full` - include all fields in JSON
+- `--raw` - disable markdown rendering
+- `--show-urls` - show web app URLs
 
 ## Filter Syntax
 
-Use with `-f/--filter`:
-- `|` for OR: `today | overdue`
-- `&` for AND: `@next & #Personal`
-- Parentheses: `(today | overdue) & p1`
-- Negation: `!@waiting_on`
-- Priority: `p1`, `p2`, `p3`, `p4`
-- Dates: `today`, `tomorrow`, `overdue`, `no date`, `7 days`
+Use with `td task list --filter "..."`:
+- `today`, `tomorrow`, `overdue`, `no date`, `7 days`
+- `p1`, `p2`, `p3`, `p4`
+- `#Project`, `@label`
+- `&` (AND), `|` (OR), `!` (NOT), `()` (grouping)
+
+Examples:
+- `"p1 & (today | overdue)"` — urgent + due/overdue
+- `"@work & 7 days"` — work tasks due in 7 days
+- `"!#Inbox"` — tasks not in Inbox
 
 ## Workflow Tips
 
-1. **Morning review**: `td today --sync`
-2. **Quick capture**: `td quick "thing to do"`
-3. **Focus list**: `td list -f "@next" --sync`
-4. **Waiting on**: `td list -f "@waiting_on" --sync`
-5. **End of day**: `td today` (cache is fine, already synced)
+1. **Morning review**: `npx td today`
+2. **Quick capture**: `npx td add "thing to do"`
+3. **Weekly view**: `npx td upcoming 7`
+4. **Completed review**: `npx td completed`

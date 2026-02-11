@@ -10,6 +10,7 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@doist/todoist-cli": "^1.10.0",
     "@grammyjs/files": "^1.1.1",
     "dotenv": "^17.2.4",
     "googleapis": "^171.4.0",

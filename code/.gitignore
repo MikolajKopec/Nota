@@ -20,6 +20,7 @@ dist/
 !.claude/CLAUDE.md
 !.claude/skills/
 !.claude/skills/scheduler/**
+!.claude/skills/todoist/**
 
 # MCP config (contains local paths)
 .mcp.json

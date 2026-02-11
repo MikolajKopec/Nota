@@ -6,7 +6,7 @@ import { join } from "path";
 import { spawn } from "child_process";
 
 const SCREENSHOT_DIR = join(tmpdir(), "asystent-screenshots");
-import { TELEGRAM_BOT_TOKEN, ALLOWED_USER_ID } from "./config.js";
+import { TELEGRAM_BOT_TOKEN, ALLOWED_USER_ID, PROJECT_ROOT } from "./config.js";
 import { transcribe } from "./transcribe.js";
 import {
   askClaudeStream,
@@ -318,43 +318,40 @@ export function createBot(): Bot<MyContext> {
           "🔧 *Todoist Setup*\n\n" +
           "1. Go to todoist.com/prefs/integrations\n" +
           "2. Scroll to \"Developer\" and copy your API token\n" +
-          "3. Send: `/todoist setup YOUR_TOKEN`\n\n" +
-          "Install td CLI: `cargo install todoist-cli-rs`\n" +
-          "Or download binary from GitHub releases.",
+          "3. Send: `/todoist setup YOUR_TOKEN`",
           { parse_mode: "Markdown" }
         );
         return;
       }
 
-      // Run td config set token + td sync via spawn
       await ctx.reply("⏳ Configuring Todoist...");
 
       try {
-        // Set token
+        // Set token via td auth token
         await new Promise<void>((resolve, reject) => {
-          const proc = spawn("td", ["config", "set", "token", token], { shell: true });
+          const proc = spawn("npx", ["td", "auth", "token", token], { cwd: PROJECT_ROOT, shell: true });
           let stderr = "";
           proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
           proc.on("close", (code: number | null) => {
             if (code === 0) resolve();
-            else reject(new Error(stderr || `td config exited with code ${code}`));
+            else reject(new Error(stderr || `td auth token exited with code ${code}`));
           });
           proc.on("error", reject);
         });
 
-        // Sync to verify
+        // Verify by fetching today's tasks
         await new Promise<void>((resolve, reject) => {
-          const proc = spawn("td", ["sync"], { shell: true });
+          const proc = spawn("npx", ["td", "today", "--json"], { cwd: PROJECT_ROOT, shell: true });
           let stderr = "";
-          proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
           proc.on("close", (code: number | null) => {
             if (code === 0) resolve();
-            else reject(new Error(stderr || `td sync exited with code ${code}`));
+            else reject(new Error(stderr || `td today exited with code ${code}`));
           });
+          proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
           proc.on("error", reject);
         });
 
-        await ctx.reply("✅ Todoist configured and synced successfully!");
+        await ctx.reply("✅ Todoist configured and verified!");
         logger.info("bot", "Todoist token configured via /todoist setup");
 
         // Delete user's message containing the token for security
@@ -365,7 +362,7 @@ export function createBot(): Bot<MyContext> {
         }
       } catch (err) {
         logger.error("bot", "Todoist setup failed", { error: (err as Error).message });
-        await ctx.reply(`❌ Setup failed: ${(err as Error).message}\n\nMake sure \`td\` CLI is installed and in PATH.`);
+        await ctx.reply(`❌ Setup failed: ${(err as Error).message}`);
       }
       return;
     }
@@ -374,7 +371,7 @@ export function createBot(): Bot<MyContext> {
     await enqueue(async () => {
       const stopTyping = startTypingLoop(ctx);
       try {
-        await handleResponse(ctx, args || "Show my Todoist tasks for today using td today --sync");
+        await handleResponse(ctx, args || "Show my Todoist tasks for today using npx td today");
       } catch (err) {
         logger.error("bot", "Error in /todoist command", { error: (err as Error).message });
         await ctx.reply(`❌ Error: ${(err as Error).message}`);
