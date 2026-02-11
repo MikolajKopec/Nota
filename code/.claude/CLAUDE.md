@@ -107,6 +107,15 @@ Don't create tasks manually - the skill handles everything:
 - Save metadata to brain to remember what each task does
 - Scheduled tasks work even when main bot is offline
 
+## TODOIST
+
+When user asks about Todoist tasks (todo list, "moje zadania", "dodaj task do todoist"), use the `todoist` skill.
+
+- Run `td` commands via **Bash** tool
+- Use `--sync` flag on read commands for fresh data
+- **Distinguish from scheduler skill**: scheduler = Windows Task Scheduler reminders/notifications, todoist = Todoist app task management
+- If `td` is not configured, tell user to run `/todoist setup` from Telegram
+
 ## MEMORY AND BRAIN VAULT
 
 ### Brain vault structure:

@@ -3,6 +3,7 @@ import { FileFlavor, hydrateFiles } from "@grammyjs/files";
 import { writeFile, unlink, readFile, readdir, stat } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import { spawn } from "child_process";
 
 const SCREENSHOT_DIR = join(tmpdir(), "asystent-screenshots");
 import { TELEGRAM_BOT_TOKEN, ALLOWED_USER_ID } from "./config.js";
@@ -289,7 +290,7 @@ export function createBot(): Bot<MyContext> {
         );
 
         stopTyping();
-        await handleResponse(ctx, result.text, startMs);
+        await sendLongMessage(ctx, result.text);
 
         logger.info("bot", "Tasks command completed", {
           durationMs: Date.now() - startMs,
@@ -299,6 +300,86 @@ export function createBot(): Bot<MyContext> {
         stopTyping();
         logger.error("bot", "Error in /tasks command", { error: (err as Error).message });
         await ctx.reply(`❌ Error: ${(err as Error).message}`);
+      }
+    });
+  });
+
+  // /todoist — Todoist task management
+  bot.command("todoist", async (ctx) => {
+    logger.info("bot", "Command: /todoist");
+    const args = ctx.match?.trim() || "";
+
+    // /todoist setup — configure td CLI token
+    if (args.toLowerCase().startsWith("setup")) {
+      const token = args.slice(5).trim();
+
+      if (!token) {
+        await ctx.reply(
+          "🔧 *Todoist Setup*\n\n" +
+          "1. Go to todoist.com/prefs/integrations\n" +
+          "2. Scroll to \"Developer\" and copy your API token\n" +
+          "3. Send: `/todoist setup YOUR_TOKEN`\n\n" +
+          "Install td CLI: `cargo install todoist-cli-rs`\n" +
+          "Or download binary from GitHub releases.",
+          { parse_mode: "Markdown" }
+        );
+        return;
+      }
+
+      // Run td config set token + td sync via spawn
+      await ctx.reply("⏳ Configuring Todoist...");
+
+      try {
+        // Set token
+        await new Promise<void>((resolve, reject) => {
+          const proc = spawn("td", ["config", "set", "token", token], { shell: true });
+          let stderr = "";
+          proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+          proc.on("close", (code: number | null) => {
+            if (code === 0) resolve();
+            else reject(new Error(stderr || `td config exited with code ${code}`));
+          });
+          proc.on("error", reject);
+        });
+
+        // Sync to verify
+        await new Promise<void>((resolve, reject) => {
+          const proc = spawn("td", ["sync"], { shell: true });
+          let stderr = "";
+          proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+          proc.on("close", (code: number | null) => {
+            if (code === 0) resolve();
+            else reject(new Error(stderr || `td sync exited with code ${code}`));
+          });
+          proc.on("error", reject);
+        });
+
+        await ctx.reply("✅ Todoist configured and synced successfully!");
+        logger.info("bot", "Todoist token configured via /todoist setup");
+
+        // Delete user's message containing the token for security
+        try {
+          await ctx.api.deleteMessage(ctx.chat.id, ctx.msg.message_id);
+        } catch {
+          logger.warn("bot", "Could not delete message with token");
+        }
+      } catch (err) {
+        logger.error("bot", "Todoist setup failed", { error: (err as Error).message });
+        await ctx.reply(`❌ Setup failed: ${(err as Error).message}\n\nMake sure \`td\` CLI is installed and in PATH.`);
+      }
+      return;
+    }
+
+    // /todoist (no args) — show today's tasks via Claude
+    await enqueue(async () => {
+      const stopTyping = startTypingLoop(ctx);
+      try {
+        await handleResponse(ctx, args || "Show my Todoist tasks for today using td today --sync");
+      } catch (err) {
+        logger.error("bot", "Error in /todoist command", { error: (err as Error).message });
+        await ctx.reply(`❌ Error: ${(err as Error).message}`);
+      } finally {
+        stopTyping();
       }
     });
   });
@@ -324,6 +405,7 @@ export function createBot(): Bot<MyContext> {
 /search <query> - Search notes
 /summary - Summarize recent notes
 /tasks - Manage scheduled tasks
+/todoist - Todoist tasks (setup: /todoist setup)
 /autostart - Bot autostart settings
 /updates - Check and install updates
 /new - New session
