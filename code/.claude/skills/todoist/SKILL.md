@@ -7,7 +7,7 @@ description: Manage Todoist tasks. Use when the user mentions "todoist", "my tas
 
 Manage tasks via `td` CLI (@doist/todoist-cli, installed as npm dependency).
 
-**IMPORTANT:** Always use `npx td` (not bare `td`) — the CLI is a local npm dependency.
+`td` is available in PATH (added via node_modules/.bin).
 
 ## Common Operations
 
@@ -15,45 +15,45 @@ Manage tasks via `td` CLI (@doist/todoist-cli, installed as npm dependency).
 
 ```bash
 # Today's agenda (includes overdue)
-npx td today
+td today
 
 # Upcoming 7 days
-npx td upcoming
+td upcoming
 
 # All tasks
-npx td task list
+td task list
 
 # By project
-npx td task list --project "Work"
+td task list --project "Work"
 
 # By priority
-npx td task list --priority p1
+td task list --priority p1
 
 # By label
-npx td task list --label "urgent"
+td task list --label "urgent"
 
 # By due date
-npx td task list --due today
+td task list --due today
 
 # Raw Todoist filter query
-npx td task list --filter "p1 & (today | overdue)"
+td task list --filter "p1 & (today | overdue)"
 
 # Inbox only
-npx td inbox
+td inbox
 ```
 
 ### Add Tasks
 
 Quick add (natural language — handles dates, projects, priorities, labels):
 ```bash
-npx td add "Buy milk tomorrow p1 #Shopping"
-npx td add "Review PR #Work @urgent"
-npx td add "Call mom next Monday"
+td add "Buy milk tomorrow p1 #Shopping"
+td add "Review PR #Work @urgent"
+td add "Call mom next Monday"
 ```
 
 Structured add:
 ```bash
-npx td task add --content "Prepare quarterly report" \
+td task add --content "Prepare quarterly report" \
   --project "Work" \
   --priority p1 \
   --due "friday" \
@@ -77,69 +77,69 @@ Options for `task add`:
 ### Complete Tasks
 
 ```bash
-npx td task complete <ref>
-npx td task complete <ref> --forever    # End recurring task permanently
+td task complete <ref>
+td task complete <ref> --forever    # End recurring task permanently
 ```
 
 ### Update Tasks
 
 ```bash
-npx td task update <ref> --content "New title"
-npx td task update <ref> --due "tomorrow"
-npx td task update <ref> --priority p1
-npx td task update <ref> --labels "urgent,work"
-npx td task update <ref> --description "Updated notes"
+td task update <ref> --content "New title"
+td task update <ref> --due "tomorrow"
+td task update <ref> --priority p1
+td task update <ref> --labels "urgent,work"
+td task update <ref> --description "Updated notes"
 ```
 
 ### View Task Details
 
 ```bash
-npx td task view <ref>
+td task view <ref>
 ```
 
 ### Delete Tasks
 
 ```bash
-npx td task delete <ref>
+td task delete <ref>
 ```
 
 ### Reopen Completed Tasks
 
 ```bash
-npx td task uncomplete <ref>
+td task uncomplete <ref>
 ```
 
 ### Move Tasks
 
 ```bash
-npx td task move <ref> --project "Work"
-npx td task move <ref> --section <id>
-npx td task move <ref> --parent <ref>
+td task move <ref> --project "Work"
+td task move <ref> --section <id>
+td task move <ref> --parent <ref>
 ```
 
 ## Projects & Labels
 
 ```bash
 # Projects
-npx td project list
-npx td project create --name "New Project"
-npx td project view <ref>
-npx td project delete <ref>
+td project list
+td project create --name "New Project"
+td project view <ref>
+td project delete <ref>
 
 # Labels
-npx td label list
-npx td label create --name "urgent"
-npx td label delete <name>
+td label list
+td label create --name "urgent"
+td label delete <name>
 ```
 
 ## Other Commands
 
 ```bash
-npx td completed                 # Show completed tasks
-npx td stats                     # Productivity stats & karma
-npx td activity                  # Activity log
-npx td reminder list             # List reminders
-npx td auth status               # Check auth status
+td completed                 # Show completed tasks
+td stats                     # Productivity stats & karma
+td activity                  # Activity log
+td reminder list             # List reminders
+td auth status               # Check auth status
 ```
 
 ## Output Flags
@@ -166,7 +166,7 @@ Examples:
 
 ## Workflow Tips
 
-1. **Morning review**: `npx td today`
-2. **Quick capture**: `npx td add "thing to do"`
-3. **Weekly view**: `npx td upcoming 7`
-4. **Completed review**: `npx td completed`
+1. **Morning review**: `td today`
+2. **Quick capture**: `td add "thing to do"`
+3. **Weekly view**: `td upcoming 7`
+4. **Completed review**: `td completed`

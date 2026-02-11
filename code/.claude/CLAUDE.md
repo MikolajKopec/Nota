@@ -111,7 +111,7 @@ Don't create tasks manually - the skill handles everything:
 
 When user asks about Todoist tasks (todo list, "moje zadania", "dodaj task do todoist"), use the `todoist` skill.
 
-- Run commands via **Bash** tool using `npx td` (npm dependency, NOT a global binary)
+- Run `td` commands via **Bash** tool (`td` is in PATH via node_modules/.bin)
 - **Distinguish from scheduler skill**: scheduler = Windows Task Scheduler reminders/notifications, todoist = Todoist app task management
 - If `td` is not configured, tell user to run `/todoist setup` from Telegram
 

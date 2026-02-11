@@ -5,6 +5,11 @@ import { readFileSync, writeFileSync } from "fs";
 import { PROJECT_ROOT } from "./config.js";
 import { logger } from "./logger.js";
 
+// Extend PATH with local node_modules/.bin so subprocess can use `td` etc.
+const BIN_DIR = resolve(PROJECT_ROOT, "node_modules", ".bin");
+const SEP = process.platform === "win32" ? ";" : ":";
+const SUBPROCESS_ENV = { ...process.env, PATH: `${BIN_DIR}${SEP}${process.env.PATH}` };
+
 const MCP_CONFIG = resolve(PROJECT_ROOT, ".mcp.json");
 
 // Load system prompt from .claude/CLAUDE.md
@@ -120,6 +125,7 @@ function spawnClaude(args: string[], userMessage: string): Promise<string> {
     const proc = spawn("claude", args, {
       cwd: PROJECT_ROOT,
       stdio: ["pipe", "pipe", "pipe"],
+      env: SUBPROCESS_ENV,
     });
 
     proc.stdin.write(userMessage);
@@ -471,6 +477,7 @@ export async function debugClaude(): Promise<string> {
     const proc = spawn("claude", args, {
       cwd: PROJECT_ROOT,
       stdio: ["pipe", "pipe", "pipe"],
+      env: SUBPROCESS_ENV,
     });
 
     proc.stdin.write("List ALL your available MCP tools. Reply with a JSON array of tool names, e.g. [\"mcp__brain__read_note\",...]");

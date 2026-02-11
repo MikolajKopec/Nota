@@ -7,6 +7,8 @@ import { spawn } from "child_process";
 
 const SCREENSHOT_DIR = join(tmpdir(), "asystent-screenshots");
 import { TELEGRAM_BOT_TOKEN, ALLOWED_USER_ID, PROJECT_ROOT } from "./config.js";
+
+const TD_BIN = join(PROJECT_ROOT, "node_modules", ".bin", "td");
 import { transcribe } from "./transcribe.js";
 import {
   askClaudeStream,
@@ -329,7 +331,7 @@ export function createBot(): Bot<MyContext> {
       try {
         // Set token via td auth token
         await new Promise<void>((resolve, reject) => {
-          const proc = spawn("npx", ["td", "auth", "token", token], { cwd: PROJECT_ROOT, shell: true });
+          const proc = spawn(TD_BIN, ["auth", "token", token], { cwd: PROJECT_ROOT, shell: true });
           let stderr = "";
           proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
           proc.on("close", (code: number | null) => {
@@ -341,7 +343,7 @@ export function createBot(): Bot<MyContext> {
 
         // Verify by fetching today's tasks
         await new Promise<void>((resolve, reject) => {
-          const proc = spawn("npx", ["td", "today", "--json"], { cwd: PROJECT_ROOT, shell: true });
+          const proc = spawn(TD_BIN, ["today", "--json"], { cwd: PROJECT_ROOT, shell: true });
           let stderr = "";
           proc.on("close", (code: number | null) => {
             if (code === 0) resolve();
@@ -371,7 +373,7 @@ export function createBot(): Bot<MyContext> {
     await enqueue(async () => {
       const stopTyping = startTypingLoop(ctx);
       try {
-        await handleResponse(ctx, args || "Show my Todoist tasks for today using npx td today");
+        await handleResponse(ctx, args || "Show my Todoist tasks for today using td today");
       } catch (err) {
         logger.error("bot", "Error in /todoist command", { error: (err as Error).message });
         await ctx.reply(`❌ Error: ${(err as Error).message}`);
