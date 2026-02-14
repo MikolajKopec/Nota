@@ -52,11 +52,10 @@
     },
     "nutrition": {
       "type": "stdio",
-      "command": "uv",
+      "command": "uvx",
       "args": [
-        "--directory",
-        "/path/to/openfoodfacts-mcp",
-        "run",
+        "--from",
+        "git+https://github.com/MikolajKopec/openfoodfacts-mcp",
         "openfoodfacts-mcp"
       ]
     }
