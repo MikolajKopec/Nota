@@ -3,19 +3,41 @@ const path = require("path");
 const os = require("os");
 const fs = require("fs");
 
-const BROWSER_PATHS = [
-  process.env.PROGRAMFILES + "\\Google\\Chrome\\Application\\chrome.exe",
-  process.env["PROGRAMFILES(X86)"] + "\\Google\\Chrome\\Application\\chrome.exe",
-  (process.env.LOCALAPPDATA || "") + "\\Google\\Chrome\\Application\\chrome.exe",
-  process.env.PROGRAMFILES + "\\Microsoft\\Edge\\Application\\msedge.exe",
-  process.env["PROGRAMFILES(X86)"] + "\\Microsoft\\Edge\\Application\\msedge.exe",
-];
+function getBrowserPaths() {
+  const platform = process.platform;
+  if (platform === "win32") {
+    return [
+      process.env.PROGRAMFILES + "\\Google\\Chrome\\Application\\chrome.exe",
+      process.env["PROGRAMFILES(X86)"] + "\\Google\\Chrome\\Application\\chrome.exe",
+      (process.env.LOCALAPPDATA || "") + "\\Google\\Chrome\\Application\\chrome.exe",
+      process.env.PROGRAMFILES + "\\Microsoft\\Edge\\Application\\msedge.exe",
+      process.env["PROGRAMFILES(X86)"] + "\\Microsoft\\Edge\\Application\\msedge.exe",
+    ];
+  } else if (platform === "darwin") {
+    return [
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+      "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+      "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    ];
+  } else {
+    return [
+      "/usr/bin/google-chrome",
+      "/usr/bin/google-chrome-stable",
+      "/usr/bin/chromium",
+      "/usr/bin/chromium-browser",
+      "/usr/bin/microsoft-edge",
+    ];
+  }
+}
 
 function findBrowser() {
-  for (const p of BROWSER_PATHS) {
+  for (const p of getBrowserPaths()) {
     if (p && fs.existsSync(p)) return p;
   }
-  throw new Error("Chrome or Edge not found on this system");
+  throw new Error(
+    "No Chromium-based browser found. Please install Chrome, Edge, or Chromium."
+  );
 }
 
 async function main() {

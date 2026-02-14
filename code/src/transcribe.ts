@@ -1,4 +1,4 @@
-import { WHISPER_URL } from "./config.js";
+import { WHISPER_URL, WHISPER_LANGUAGE } from "./config.js";
 
 const API = `${WHISPER_URL}/gradio_api`;
 
@@ -34,7 +34,7 @@ export async function transcribe(audioBuffer: Buffer, filename: string): Promise
         "txt",    // file_format (plain text, no timestamps)
         false,    // add_timestamp
         "large-v3",  // model
-        "polish", // language
+        WHISPER_LANGUAGE === "auto" ? "" : WHISPER_LANGUAGE, // language
         false,    // translate
         5,        // beam_size
         -1,       // log_prob_threshold
@@ -91,8 +91,22 @@ export async function transcribe(audioBuffer: Buffer, filename: string): Promise
 
   const { event_id } = (await callRes.json()) as { event_id: string };
 
-  // Step 3: Poll SSE stream for result
-  const resultRes = await fetch(`${API}/call/transcribe_file/${event_id}`);
+  // Step 3: Poll SSE stream for result (120s timeout)
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000);
+  let resultRes: Response;
+  try {
+    resultRes = await fetch(`${API}/call/transcribe_file/${event_id}`, {
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeout);
+    if ((err as Error).name === "AbortError") {
+      throw new Error("Whisper transcription timed out after 120s");
+    }
+    throw err;
+  }
+  clearTimeout(timeout);
   if (!resultRes.ok) {
     throw new Error(`Whisper result failed: ${resultRes.status} ${await resultRes.text()}`);
   }

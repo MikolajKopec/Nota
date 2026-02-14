@@ -19,3 +19,4 @@ function required(name: string): string {
 export const TELEGRAM_BOT_TOKEN = required("TELEGRAM_BOT_TOKEN");
 export const ALLOWED_USER_ID = Number(required("ALLOWED_USER_ID"));
 export const WHISPER_URL = process.env.WHISPER_URL || "http://localhost:7860";
+export const WHISPER_LANGUAGE = process.env.WHISPER_LANGUAGE || "auto";

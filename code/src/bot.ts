@@ -74,7 +74,7 @@ async function sendLongMessage(ctx: MyContext, text: string): Promise<void> {
     try {
       await ctx.reply(chunk, { parse_mode: "Markdown" });
     } catch {
-      // Fallback to plain text if Markdown parsing fails
+      logger.debug("bot", "Markdown parse failed, falling back to plain text");
       await ctx.reply(chunk);
     }
   }
@@ -397,9 +397,9 @@ export function createBot(): Bot<MyContext> {
   // /help — show available commands
   bot.command("help", async (ctx) => {
     logger.info("bot", "Command: /help");
-    const helpText = `🤖 Nota - Your intelligent note companion
+    const helpText = `Nota - Your intelligent note companion
 
-📝 COMMANDS:
+COMMANDS:
 /note <text> - Save a note
 /search <query> - Search notes
 /summary - Summarize recent notes
@@ -411,41 +411,12 @@ export function createBot(): Bot<MyContext> {
 /rewind - Resume previous session
 /help - This message
 
-💬 MESSAGES:
-• Text - Chat with assistant
-• Voice - Whisper transcription
-• Photo - Image analysis
+MESSAGES:
+Text - Chat with assistant
+Voice - Whisper transcription
+Photo - Image analysis
 
-🎨 SKILLS (16):
-
-📄 Documents:
-• docx - Word documents
-• pdf - PDF processing
-• pptx - PowerPoint presentations
-• xlsx - Excel spreadsheets
-
-🎨 Graphics:
-• canvas-design - Posters and graphics
-• algorithmic-art - Generative art
-• slack-gif-creator - Animated GIFs
-• theme-factory - HTML themes
-
-💻 Web & Development:
-• frontend-design - React + Tailwind
-• web-artifacts-builder - HTML dashboards
-• webapp-testing - Playwright tests
-
-🔧 Meta & Tools:
-• mcp-builder - Create MCP servers
-• skill-creator - Create skills
-• brand-guidelines - Anthropic branding
-• internal-comms - Internal communications
-• doc-coauthoring - Document collaboration
-
-Examples:
-"Draw a BELIEVE poster"
-"Create a budget spreadsheet"
-"Help me create a skill"`;
+Just send a message to get started.`;
 
     await ctx.reply(helpText);
   });
@@ -626,13 +597,13 @@ Examples:
         const file = await ctx.getFile();
         const buffer = await downloadFile(file.file_path!, bot.token);
 
-        console.log(`Transcribing voice (${ctx.msg.voice.duration}s)...`);
+        logger.info("bot", "Transcribing voice", { durationS: ctx.msg.voice.duration });
         const text = await transcribe(buffer, "voice.ogg");
-        console.log(`Transcription: "${text}"`);
+        logger.info("bot", "Transcription result", { text: text.slice(0, 200) });
 
         await handleResponse(ctx, text);
       } catch (err) {
-        console.error("Voice handling error:", err);
+        logger.error("bot", "Voice handling error", { error: (err as Error).message });
         await ctx.reply(`Error: ${(err as Error).message}`);
       } finally {
         stopTyping();
@@ -661,13 +632,13 @@ Examples:
           ? `${caption}\n\nZdj\u0119cie zapisane w: ${tmpPath}`
           : `Przeanalizuj zdj\u0119cie zapisane w: ${tmpPath}`;
 
-        console.log(`Photo received, saved to ${tmpPath}`);
+        logger.info("bot", "Photo received", { path: tmpPath });
         await handleResponse(ctx, prompt);
 
         // Cleanup
         unlink(tmpPath).catch(() => {});
       } catch (err) {
-        console.error("Photo handling error:", err);
+        logger.error("bot", "Photo handling error", { error: (err as Error).message });
         await ctx.reply(`Error: ${(err as Error).message}`);
       } finally {
         stopTyping();
@@ -680,10 +651,10 @@ Examples:
     await enqueue(async () => {
       const stopTyping = startTypingLoop(ctx);
       try {
-        console.log(`Text: "${ctx.msg.text}"`);
+        logger.debug("bot", "Text message received", { text: ctx.msg.text.slice(0, 200) });
         await handleResponse(ctx, ctx.msg.text);
       } catch (err) {
-        console.error("Text handling error:", err);
+        logger.error("bot", "Text handling error", { error: (err as Error).message });
         await ctx.reply(`Error: ${(err as Error).message}`);
       } finally {
         stopTyping();

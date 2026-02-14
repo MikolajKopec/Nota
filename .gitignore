@@ -22,8 +22,8 @@ sessions.json
 # Temp files
 %TEMP%/asystent-screenshots/
 
-# Claude Code
-.claude/
+# Claude Code (root level only, code/.claude/ is tracked)
+/.claude/
 
 # MCP config (contains local paths)
 assistant-mcp.json

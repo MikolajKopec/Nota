@@ -1,7 +1,7 @@
 import { spawn, ChildProcess } from "child_process";
 import { resolve } from "path";
 import { randomUUID } from "crypto";
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, renameSync } from "fs";
 import { PROJECT_ROOT } from "./config.js";
 import { logger } from "./logger.js";
 
@@ -46,16 +46,20 @@ interface SessionState {
 }
 
 function loadSessions(): SessionState {
-  try {
-    const data = readFileSync(SESSIONS_FILE, "utf-8");
-    const parsed = JSON.parse(data) as SessionState;
-    return {
-      currentSessionId: parsed.currentSessionId ?? null,
-      history: Array.isArray(parsed.history) ? parsed.history : [],
-    };
-  } catch {
-    return { currentSessionId: null, history: [] };
+  const tmpFile = SESSIONS_FILE + ".tmp";
+  for (const file of [SESSIONS_FILE, tmpFile]) {
+    try {
+      const data = readFileSync(file, "utf-8");
+      const parsed = JSON.parse(data) as SessionState;
+      return {
+        currentSessionId: parsed.currentSessionId ?? null,
+        history: Array.isArray(parsed.history) ? parsed.history : [],
+      };
+    } catch {
+      // Try next file
+    }
   }
+  return { currentSessionId: null, history: [] };
 }
 
 function saveSessions(): void {
@@ -64,7 +68,9 @@ function saveSessions(): void {
     history: sessionHistory,
   };
   try {
-    writeFileSync(SESSIONS_FILE, JSON.stringify(state, null, 2));
+    const tmpFile = SESSIONS_FILE + ".tmp";
+    writeFileSync(tmpFile, JSON.stringify(state, null, 2));
+    renameSync(tmpFile, SESSIONS_FILE);
     logger.debug("claude", "Saved sessions", { currentSessionId, historyCount: sessionHistory.length });
   } catch (err) {
     logger.error("claude", "Failed to save sessions", { error: (err as Error).message });
@@ -141,7 +147,7 @@ function spawnClaude(args: string[], userMessage: string): Promise<string> {
     proc.stderr.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
       stderr += text;
-      if (text.trim()) console.error("[claude stderr]", text.trim());
+      if (text.trim()) logger.warn("claude", "stderr output", { message: text.trim() });
     });
 
     const timer = setTimeout(() => {
@@ -186,6 +192,7 @@ function spawnClaudeStream(args: string[], userMessage: string, callbacks: Strea
     proc = spawn("claude", args, {
       cwd: PROJECT_ROOT,
       stdio: ["pipe", "pipe", "pipe"],
+      env: SUBPROCESS_ENV,
     });
 
     proc.stdin!.write(userMessage);
@@ -341,7 +348,7 @@ function spawnClaudeStream(args: string[], userMessage: string, callbacks: Strea
 
 // --- Public API ---
 
-export async function askClaude(userMessage: string): Promise<string> {
+export async function askClaude(userMessage: string, _isRetry = false): Promise<string> {
   if (currentSessionId === null) {
     // New session
     currentSessionId = randomUUID();
@@ -385,16 +392,18 @@ export async function askClaude(userMessage: string): Promise<string> {
     try {
       return await spawnClaude(args, userMessage);
     } catch (err) {
-      // Retry as new session if resume fails
-      console.error("[claude] Resume failed, retrying as new session:", (err as Error).message);
+      if (_isRetry) {
+        throw new Error(`Claude failed after retry: ${(err as Error).message}`);
+      }
+      logger.error("claude", "Resume failed, retrying as new session", { error: (err as Error).message });
       currentSessionId = null;
       saveSessions();
-      return askClaude(userMessage);
+      return askClaude(userMessage, true);
     }
   }
 }
 
-export async function askClaudeStream(userMessage: string, callbacks: StreamCallbacks): Promise<StreamResult> {
+export async function askClaudeStream(userMessage: string, callbacks: StreamCallbacks, _isRetry = false): Promise<StreamResult> {
   if (currentSessionId === null) {
     // New session
     currentSessionId = randomUUID();
@@ -450,13 +459,16 @@ export async function askClaudeStream(userMessage: string, callbacks: StreamCall
       const handle = spawnClaudeStream(args, userMessage, callbacks);
       return await handle.promise;
     } catch (err) {
+      if (_isRetry) {
+        throw new Error(`Claude failed after retry: ${(err as Error).message}`);
+      }
       logger.error("claude", "Resume failed, retrying as new session", {
         sessionId: currentSessionId,
         error: (err as Error).message
       });
       currentSessionId = null;
       saveSessions();
-      const result = await askClaudeStream(userMessage, callbacks);
+      const result = await askClaudeStream(userMessage, callbacks, true);
       result.resumeFailed = true;
       return result;
     }

@@ -1,7 +1,8 @@
-import { exec } from "child_process";
+import { exec, execSync } from "child_process";
 import { promisify } from "util";
-import { resolve } from "path";
+import { resolve, join } from "path";
 import { readFileSync, writeFileSync, existsSync } from "fs";
+import { homedir } from "os";
 import { logger } from "./logger.js";
 
 const execAsync = promisify(exec);
@@ -136,47 +137,103 @@ export async function checkAndNotify(): Promise<{ hasUpdates: boolean; message: 
 }
 
 /**
- * Schedule bot restart after 1 minute using Windows Task Scheduler
+ * Schedule bot restart after 1 minute (cross-platform)
  */
 export async function scheduleRestart(): Promise<void> {
+  const platform = process.platform;
+
   try {
-    const taskName = "AsystentBotRestart_OneTime";
-    const codeDir = PROJECT_ROOT;
-    const logFile = resolve(PROJECT_ROOT, "..", "bot.log");
-
-    // Calculate time 1 minute from now
-    const now = new Date();
-    const runTime = new Date(now.getTime() + 60 * 1000); // 1 minute from now
-    const timeStr = runTime.toTimeString().slice(0, 5); // HH:MM format
-
-    // Delete existing restart task if present
-    await execAsync(
-      `powershell -Command "Unregister-ScheduledTask -TaskName '${taskName}' -Confirm:$false -ErrorAction SilentlyContinue"`
-    ).catch(() => {
-      // Ignore errors if task doesn't exist
-    });
-
-    // Use node.exe with compiled dist/index.js (no need for tsx in PATH)
-    const nodeExe = process.execPath; // Full path to node.exe
-    const distIndex = resolve(codeDir, "dist", "index.js");
-
-    // Create one-time scheduled task
-    const createCmd = `powershell -Command "` +
-      `$action = New-ScheduledTaskAction -Execute '${nodeExe}' -Argument '\\"${distIndex}\\"' -WorkingDirectory '${codeDir}'; ` +
-      `$trigger = New-ScheduledTaskTrigger -Once -At '${timeStr}'; ` +
-      `$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable; ` +
-      `$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive; ` +
-      `Register-ScheduledTask -TaskName '${taskName}' -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description 'One-time bot restart after update' -Force | Out-Null` +
-      `"`;
-
-    await execAsync(createCmd);
-    logger.info("updates", "Scheduled bot restart", { time: runTime.toISOString() });
+    if (platform === "win32") {
+      await scheduleRestartWindows();
+    } else if (platform === "darwin") {
+      await scheduleRestartMacOS();
+    } else {
+      // Linux/other: use setTimeout fallback
+      logger.warn("updates", "No native scheduler on this platform, using setTimeout fallback");
+      setTimeout(() => {
+        const codeDir = PROJECT_ROOT;
+        const nodeExe = process.execPath;
+        const distIndex = resolve(codeDir, "dist", "index.js");
+        const logFile = resolve(PROJECT_ROOT, "..", "bot.log");
+        execSync(`nohup "${nodeExe}" "${distIndex}" >> "${logFile}" 2>&1 &`, { cwd: codeDir });
+      }, 60_000);
+      logger.info("updates", "Scheduled restart via setTimeout (60s)");
+    }
   } catch (err) {
     logger.error("updates", "Failed to schedule restart", {
       error: (err as Error).message,
     });
     throw new Error(`Failed to schedule restart: ${(err as Error).message}`);
   }
+}
+
+async function scheduleRestartWindows(): Promise<void> {
+  const taskName = "AsystentBotRestart_OneTime";
+  const codeDir = PROJECT_ROOT;
+
+  const now = new Date();
+  const runTime = new Date(now.getTime() + 60 * 1000);
+  const timeStr = runTime.toTimeString().slice(0, 5);
+
+  await execAsync(
+    `powershell -Command "Unregister-ScheduledTask -TaskName '${taskName}' -Confirm:$false -ErrorAction SilentlyContinue"`
+  ).catch(() => {});
+
+  const nodeExe = process.execPath;
+  const distIndex = resolve(codeDir, "dist", "index.js");
+
+  const createCmd = `powershell -Command "` +
+    `$action = New-ScheduledTaskAction -Execute '${nodeExe}' -Argument '\\"${distIndex}\\"' -WorkingDirectory '${codeDir}'; ` +
+    `$trigger = New-ScheduledTaskTrigger -Once -At '${timeStr}'; ` +
+    `$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable; ` +
+    `$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive; ` +
+    `Register-ScheduledTask -TaskName '${taskName}' -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description 'One-time bot restart after update' -Force | Out-Null` +
+    `"`;
+
+  await execAsync(createCmd);
+  logger.info("updates", "Scheduled bot restart (Windows)", { time: runTime.toISOString() });
+}
+
+async function scheduleRestartMacOS(): Promise<void> {
+  const plistName = "com.asystent.bot.restart";
+  const plistPath = join(homedir(), "Library", "LaunchAgents", `${plistName}.plist`);
+  const codeDir = PROJECT_ROOT;
+  const nodeExe = process.execPath;
+  const distIndex = resolve(codeDir, "dist", "index.js");
+  const logFile = resolve(PROJECT_ROOT, "..", "bot.log");
+
+  // Unload existing if present
+  await execAsync(`launchctl unload "${plistPath}"`).catch(() => {});
+
+  const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>${plistName}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${nodeExe}</string>
+        <string>${distIndex}</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>${codeDir}</string>
+    <key>StartInterval</key>
+    <integer>60</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>LaunchOnlyOnce</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>${logFile}</string>
+    <key>StandardErrorPath</key>
+    <string>${logFile}</string>
+</dict>
+</plist>`;
+
+  writeFileSync(plistPath, plistContent, "utf-8");
+  await execAsync(`launchctl load "${plistPath}"`);
+  logger.info("updates", "Scheduled bot restart (macOS)", { plistPath });
 }
 
 /**
