@@ -1,6 +1,7 @@
 import { exec } from "child_process";
 import { promisify } from "util";
 import { resolve } from "path";
+import { readFileSync, writeFileSync, existsSync } from "fs";
 import { logger } from "./logger.js";
 
 const execAsync = promisify(exec);
@@ -179,6 +180,43 @@ export async function scheduleRestart(): Promise<void> {
 }
 
 /**
+ * Sync new MCP servers from .mcp.json.example into local .mcp.json.
+ * Only adds servers that don't already exist locally (never overwrites).
+ */
+function syncMcpServers(): void {
+  const mcpPath = resolve(PROJECT_ROOT, ".mcp.json");
+  const examplePath = resolve(PROJECT_ROOT, ".mcp.json.example");
+
+  if (!existsSync(examplePath) || !existsSync(mcpPath)) return;
+
+  try {
+    const local = JSON.parse(readFileSync(mcpPath, "utf-8"));
+    const example = JSON.parse(readFileSync(examplePath, "utf-8"));
+    const localServers = local.mcpServers ?? {};
+    const exampleServers = example.mcpServers ?? {};
+
+    const newServers = Object.keys(exampleServers).filter(
+      (name) => !(name in localServers)
+    );
+
+    if (newServers.length === 0) return;
+
+    for (const name of newServers) {
+      localServers[name] = exampleServers[name];
+      logger.info("updates", `Added new MCP server: ${name}`);
+    }
+
+    local.mcpServers = localServers;
+    writeFileSync(mcpPath, JSON.stringify(local, null, 2) + "\n");
+    logger.info("updates", "MCP config synced", { added: newServers });
+  } catch (err) {
+    logger.warn("updates", "Failed to sync MCP servers", {
+      error: (err as Error).message,
+    });
+  }
+}
+
+/**
  * Apply available updates (git pull + npm run build)
  */
 export async function applyUpdates(): Promise<{ success: boolean; message: string }> {
@@ -198,14 +236,17 @@ export async function applyUpdates(): Promise<{ success: boolean; message: strin
       };
     }
 
-    // Step 2: Install dependencies (in case new ones were added)
+    // Step 2: Sync new MCP servers from example into local config
+    syncMcpServers();
+
+    // Step 3: Install dependencies (in case new ones were added)
     logger.debug("updates", "Running npm install");
     const { stdout: installOutput } = await execAsync("npm install", {
       cwd: process.cwd(),
     });
     logger.debug("updates", "npm install output", { stdout: installOutput });
 
-    // Step 3: Build
+    // Step 4: Build
     logger.debug("updates", "Running npm run build");
     const { stdout: buildOutput } = await execAsync("npm run build", {
       cwd: process.cwd(),

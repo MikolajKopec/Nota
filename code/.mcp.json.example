@@ -49,6 +49,16 @@
       "env": {
         "MEMORY_FILE_PATH": "/path/to/project/code/memory.jsonl"
       }
+    },
+    "nutrition": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/openfoodfacts-mcp",
+        "run",
+        "openfoodfacts-mcp"
+      ]
     }
   }
 }
