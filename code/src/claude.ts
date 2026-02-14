@@ -26,7 +26,7 @@ function loadSystemPrompt(): string {
 
 const SYSTEM_PROMPT = loadSystemPrompt();
 
-const ALLOWED_TOOLS = "mcp__user-notes__*,mcp__brain__*,mcp__filesystem__*,mcp__puppeteer__*,mcp__memory__*,WebSearch,WebFetch,Bash,Write,Read,Skill";
+const ALLOWED_TOOLS = "mcp__user-notes__*,mcp__brain__*,mcp__filesystem__*,mcp__puppeteer__*,mcp__memory__*,mcp__nutrition__*,WebSearch,WebFetch,Bash,Write,Read,Skill";
 const MODEL = "claude-sonnet-4-5-20250929";
 const TIMEOUT_MS = 120_000;
 
